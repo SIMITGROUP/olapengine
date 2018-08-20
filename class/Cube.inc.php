@@ -14,6 +14,7 @@ class Cube extends OLAPClass
 	
 
 	private $data;
+	private $dimensiondata;
 	public function __construct()
 	{
 		parent::__construct();
@@ -39,15 +40,15 @@ class Cube extends OLAPClass
 			'measures'=>$measures,
 		];
 
-		$d=$this->generateDistinctDimensionSchema($dimensions);
+		$dimensiondata=$this->generateDistinctDimensionSchema($dimensions);
 		foreach($facts as $i => $f)
 		{
-			$d=$this->prepareDimensionMasterList($d,$i,$f,$dimensions,0);
-			
-			
-		}		
-		// echo '<pre>'.print_r($d,true).'</pre>';
-		$cube['dimensionmasterdata']=$d;
+			$dimensiondata=$this->prepareDimensionMasterList($dimensiondata,$i,$f,$dimensions,0);						
+		}
+
+		$levelname='top';
+		$dimensiondata=$this->computeParentFactsArray($dimensiondata,0,$levelname);
+		$cube['dimensionmasterdata']=$dimensiondata;
 
 		return $cube;
 	}
@@ -86,38 +87,85 @@ class Cube extends OLAPClass
 
 		foreach($d as $fieldname => $dim_obj)
 		{
-			$dimensionvalue=$row[$fieldname];		
-			//have sub rows
+			$dimensionvalue=$row[$fieldname];					
 			if($dimensionchildarr[$fieldname]['field'] !='')
 			{
 				$childfield=$dimensionchildarr[$fieldname]['field'];
 				$childfielddimension=$dimensionchildarr[$fieldname]['dimension'];
 
-				//if not exists this dimension
+				//if not exists this dimension								
+				
+				
 				
 				if(!isset($d[$fieldname]['data'][$dimensionvalue]))
 				{					
 					$d[$fieldname]['data'][$dimensionvalue]=[];
 					$d[$fieldname]['data'][$dimensionvalue][$childfield]=['data'=>[]];
 				}
-
-
-				$tmp=$this->prepareDimensionMasterList($d[$fieldname]['data'][$dimensionvalue],$rowno,$row,$childfielddimension,$level);
-				$d[$fieldname]['data'][$dimensionvalue]=$tmp;
+				$d[$fieldname]['data'][$dimensionvalue]=$this->prepareDimensionMasterList($d[$fieldname]['data'][$dimensionvalue],$rowno,$row,$childfielddimension,$level);									
 
 			}
 			else
 			{
 				//append into array if not exists				
 				$existingarr=$d[$fieldname]['data'];
-				if(!in_array($dimensionvalue, $d[$fieldname]['data']))
+				if(!isset($d[$fieldname]['data'][$dimensionvalue]))
 				{					
-					array_push($d[$fieldname]['data'],$dimensionvalue);
+					$d[$fieldname]['data'][$dimensionvalue]=[];
+					$d[$fieldname]['data'][$dimensionvalue]['facts']=[$rowno];
+					// =['facts'=>[$rowno]];
+				}
+				else
+				{
+					array_push($d[$fieldname]['data'][$dimensionvalue]['facts'],$rowno);	
 				}
 			}
 			
 		}
 		return $d;
+	}
+
+
+
+	/**
+       * 
+       * This function will compute fact array to those parent hierarchy data
+       *
+       * @param array $dimensiondata
+       * @return dimensiondata 
+       */
+	private function computeParentFactsArray($dimensiondata,$level,$mylevelname)
+	{
+
+		$level++;
+		$tmpfact=[];
+		foreach($dimensiondata as $fieldname => $obj)
+		{						
+			foreach($obj['data'] as $dimensionvalue => $dobj)
+			{
+				//mean this folder have facts array already, it is last level and we no need to do anything
+				if(isset($dobj['facts'])) 
+				{
+					$tmpfact=array_merge($tmpfact,$dobj['facts']);					
+				}
+				else //we need to recursive define facts here
+				{						
+					$r=$this->computeParentFactsArray($dobj,$level,$dimensionvalue );
+					$tmpfact2=$r['facts'];
+					$dimensiondata[$fieldname]['data'][$dimensionvalue]=$r;
+					$tmpfact=array_merge($tmpfact,$tmpfact2);
+					$tmpfact2=[];
+				}
+
+
+			}
+
+		}
+		
+		$dimensiondata['facts']=$tmpfact;
+		
+		return $dimensiondata;
+
 	}
 
 
@@ -151,7 +199,10 @@ class Cube extends OLAPClass
 		return $d;
 	}
 
-	/**
+
+	
+	 
+	 /**
        * 
        * get array of dimension according field, currently maximum support 3 level
        *
@@ -160,6 +211,7 @@ class Cube extends OLAPClass
 	   *		hierarchy of dimension. Last element of array is the desire array to check. Maximum 3 element, as ['region','country','city']
 	   * @param object $filter to define filter parameter:  ['region'=>['SEA']] or ['region'=>['*']] or ['region'=>['SEA'],'country'=>['MY']],
 	   *		maximum support 3 element
+	   * @param string $dimensionlist either 'dimension' (show distinct value of dimension) or 'fact' (show index of fact under specific dimension)
        * @return blankdimensionarray
        */
 	public function getDimensionValues($cube,$k,$filter=[],$isdimensionlist='dimension')
@@ -189,12 +241,7 @@ class Cube extends OLAPClass
 						}
 						else
 						{
-
-							foreach($dobj as $dobjindex => $factrowno)
-							{
-								array_push($r,$factrowno);
-							}
-							
+							$r=array_merge($r,$dobj['facts']);
 						}
 					}
 					
@@ -226,19 +273,16 @@ class Cube extends OLAPClass
 			
 			foreach($tmp as $i => $o)
 			{
-				foreach($o as $a=>$b)
+				foreach($o as $value=>$child)
 				{
 
 					if($isdimensionlist=='dimension')
 					{
-						array_push($r, $a);	
+						array_push($r, $value);	
 					}
 					else
 					{
-						foreach($dobj as $dobjindex => $factrowno)
-							{
-								array_push($r,$factrowno);
-							}
+					  $r=array_merge($r,$child['facts']);
 					}
 					
 				}
@@ -299,7 +343,7 @@ class Cube extends OLAPClass
 					}
 					else
 					{
-
+					  $r=array_merge($r,$b['facts']);
 					}
 					
 				}
@@ -308,6 +352,15 @@ class Cube extends OLAPClass
  
 		}
 		
+		if($isdimensionlist=='dimension')
+		{
+			sort($r,SORT_STRING);
+		}
+		else
+		{
+		  sort($r);
+		}
+
 		return $r;
 
 	}

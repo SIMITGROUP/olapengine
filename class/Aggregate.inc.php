@@ -7,8 +7,8 @@ class Aggregate extends OLAPClass
 		parent::__construct();	
 	}
 
-	private function aggregate()
+	public function aggregateSummary($facts,$c)
 	{
-		
+		return $c;
 	}
 }

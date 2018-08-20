@@ -10,6 +10,7 @@
    */
 class OLAPClass
 {
+
 	public function __construct()
 	{
 
@@ -49,6 +50,7 @@ include __DIR__."/Aggregate.inc.php";
 class OLAPEngine extends OLAPClass
 {
 	private $cube;
+	private $agg;
 
 	  /**
        * 
@@ -58,6 +60,8 @@ class OLAPEngine extends OLAPClass
        */
 	public function __construct()
 	{
+		$this->cube = new Cube();
+		$this->agg= new Aggregate();
 		parent::__construct();
 		
 	}
@@ -74,36 +78,13 @@ class OLAPEngine extends OLAPClass
 
        * @return cube 
        */
-	public function createCube(&$fact,$dimensions=[],$measures=[])
-	{
-		/*
-			$samplecube=[
-			    [dimensions] => $dimensions,
-			    [measures] => $measures,
-			    [dimensionmasterdata] => [
-			            [agent] => [
-			                    [data] => [A]
-			                ],
-			            [item] => [
-			                    [data] => [Item 1,Item 2]
-			                ],           
-			            [date] => [
-			                    [data] => [
-			                            2018-01-01,
-			                            2018-01-03,
-			                            2018-01-08,
-			                            2018-01-18,
-			                        ]
-			                ],
-			        ]
-			]
-		*/
-		$cube = new Cube();
-		$agg= new Aggregate();
-		$c= $cube->createCube($fact,$dimensions,$measures);
-
+	public function createCube(&$facts,$dimensions=[],$measures=[])
+	{		
+		$c= $this->cube->createCube($facts,$dimensions,$measures);
+		$c=$this->agg->aggregateSummary($facts,$c);
 		return $c;
 	}
+
 
 	/**
        * 
@@ -116,15 +97,38 @@ class OLAPEngine extends OLAPClass
 	   *		maximum support 3 element
        * @return blankdimensionarray
        */
-	public function getDimensionValues($c,$k,$filter=[],$isdimensionlist='dimension')
+	public function getDimensionList(&$cube,&$k,&$filter)
 	{
-		$cube = new Cube();
-		return $cube->getDimensionValues($c,$k,$filter,$isdimensionlist);
+
+		return $this->cube->getDimensionValues($cube,$k,$filter,'dimension');
 	}
 
-	public function getFacts(&$cube,&$facts,$filters)
+	/**
+       * 
+       * get array of fact's index for specific dimension (according filter), currently maximum support 3 level, call getDimensionValues() at Cube.inc.php
+       *
+       * @param object $cube variable created by createCube() 
+	   * @param array $k get dimension's data, ['region'] for region, or ['region','country'] for country. we shall define array according 
+	   *		hierarchy of dimension. Last element of array is the desire array to check. Maximum 3 element, as ['region','country','city']
+	   * @param object $filter to define filter parameter:  ['region'=>['SEA']] or ['region'=>['*']] or ['region'=>['SEA'],'country'=>['MY']],
+	   *		maximum support 3 element
+       * @return blankdimensionarray
+       */
+	public function getDimensionFactsIndex(&$cube,&$k,&$filter)
 	{
-		return $cube;
+		return $this->cube->getDimensionValues($cube,$k,$filter,'facts');
+	}
+
+	
+
+	public function getFactsFromIndex(&$facts,&$indexes)
+	{
+		$data=[];
+		foreach($indexes as $i => $rowno)
+		{
+			array_push($data,$facts[$rowno]);
+		}
+		return $data;
 	}
 
 }
