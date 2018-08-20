@@ -44,6 +44,7 @@ class Cube extends OLAPClass
 		{
 			$d=$this->prepareDimensionMasterList($d,$i,$f,$dimensions,0);
 			
+			
 		}		
 		// echo '<pre>'.print_r($d,true).'</pre>';
 		$cube['dimensionmasterdata']=$d;
@@ -85,12 +86,8 @@ class Cube extends OLAPClass
 
 		foreach($d as $fieldname => $dim_obj)
 		{
-			$dimensionvalue=$row[$fieldname];
-
-			
-
+			$dimensionvalue=$row[$fieldname];		
 			//have sub rows
-
 			if($dimensionchildarr[$fieldname]['field'] !='')
 			{
 				$childfield=$dimensionchildarr[$fieldname]['field'];
@@ -111,17 +108,11 @@ class Cube extends OLAPClass
 			}
 			else
 			{
-				//append into array if not exists
-				
+				//append into array if not exists				
 				$existingarr=$d[$fieldname]['data'];
-
-				if(!isset($d[$fieldname]['data'][$dimensionvalue]))
-				{
-					$d[$fieldname]['data'][$dimensionvalue]=[$rowno];
-				}
-				else
-				{
-					array_push($d[$fieldname]['data'][$dimensionvalue],$rowno);
+				if(!in_array($dimensionvalue, $d[$fieldname]['data']))
+				{					
+					array_push($d[$fieldname]['data'],$dimensionvalue);
 				}
 			}
 			
@@ -245,9 +236,9 @@ class Cube extends OLAPClass
 					else
 					{
 						foreach($dobj as $dobjindex => $factrowno)
-						{
-							array_push($r,$factrowno);
-						}
+							{
+								array_push($r,$factrowno);
+							}
 					}
 					
 				}

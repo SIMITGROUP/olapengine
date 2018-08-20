@@ -31,19 +31,26 @@ $facts = $data;
 $olap = new OLAPEngine();
 
 //get region list without filter
+$column=['item']; 
+$filter=[];
+
+/*
 $column=['region']; 
 $filter=[];
 
 //get country list under region SEA
-//$column=['region','country']; 
-//$filter=['region'=>['SEA']];
+$column=['region','country']; 
+$filter=['region'=>['SEA']];
 
 
 //get all country list
-//$column=['region','country']; 
-//$filter=['region'=>['*']];
+$column=['region','country']; 
+$filter=['region'=>['*']];
+*/
 $cube = $olap->createCube($facts,$dimensions,$measures);
 $data=$olap->getDimensionValues($cube,$column,$filter,'facts');
-$subfacts=$olap->getFacts($cube,$facts,$filter);
+// $data=$olap->getDimensionValues($cube,$column,$filter,'dimension');
 
-echo '<pre>'.print_r($data,true).'</pre>';
+//$subfacts=$olap->getFacts($cube,$facts,$filter);
+
+echo '<pre>'.print_r($cube,true).'</pre>';
