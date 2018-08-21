@@ -47,7 +47,7 @@ class Cube extends OLAPClass
 		}
 
 		$levelname='top';
-		$dimensiondata=$this->computeParentFactsArray($dimensiondata,0,$levelname);
+		$dimensiondata=$this->computeParentFactsArray($dimensiondata,$measures,$facts);
 		$cube['dimensionmasterdata']=$dimensiondata;
 
 		return $cube;
@@ -93,10 +93,7 @@ class Cube extends OLAPClass
 				$childfield=$dimensionchildarr[$fieldname]['field'];
 				$childfielddimension=$dimensionchildarr[$fieldname]['dimension'];
 
-				//if not exists this dimension								
-				
-				
-				
+				//if not exists this dimension																				
 				if(!isset($d[$fieldname]['data'][$dimensionvalue]))
 				{					
 					$d[$fieldname]['data'][$dimensionvalue]=[];
@@ -134,10 +131,10 @@ class Cube extends OLAPClass
        * @param array $dimensiondata
        * @return dimensiondata 
        */
-	private function computeParentFactsArray($dimensiondata,$level,$mylevelname)
+	private function computeParentFactsArray($dimensiondata,$measures,&$facts)
 	{
-
-		$level++;
+		// echo 'under computeParentFactsArray:'.count($facts).'<br/>';
+		$agg = new Aggregate($facts);
 		$tmpfact=[];
 		foreach($dimensiondata as $fieldname => $obj)
 		{						
@@ -146,13 +143,15 @@ class Cube extends OLAPClass
 				//mean this folder have facts array already, it is last level and we no need to do anything
 				if(isset($dobj['facts'])) 
 				{
-					$tmpfact=array_merge($tmpfact,$dobj['facts']);					
+					$tmpfact=array_merge($tmpfact,$dobj['facts']);	
+					$dimensiondata[$fieldname]['data'][$dimensionvalue]['aggregate']=$agg->aggregateSummary($dobj['facts'],$measures);
 				}
 				else //we need to recursive define facts here
 				{						
-					$r=$this->computeParentFactsArray($dobj,$level,$dimensionvalue );
+					$r=$this->computeParentFactsArray($dobj,$measures,$facts);
 					$tmpfact2=$r['facts'];
-					$dimensiondata[$fieldname]['data'][$dimensionvalue]=$r;
+					$r['aggregate']=$agg->aggregateSummary($tmpfact2,$measures);;
+					$dimensiondata[$fieldname]['data'][$dimensionvalue]=$r;					
 					$tmpfact=array_merge($tmpfact,$tmpfact2);
 					$tmpfact2=[];
 				}
@@ -163,7 +162,7 @@ class Cube extends OLAPClass
 		}
 		
 		$dimensiondata['facts']=$tmpfact;
-		
+		$dimensiondata['aggregate']=$agg->aggregateSummary($dimensiondata['facts'],$measures);
 		return $dimensiondata;
 
 	}
@@ -200,8 +199,18 @@ class Cube extends OLAPClass
 	}
 
 
-	
-	 
+	/**
+       * 
+       * Create blank aggregate hash result
+       *
+       * @param array $dimension array of dimension
+
+       * @return aggregated array
+       */
+	 private function genDefaultAggregateValue()
+	 {
+	 	return ['sum'=>0,'avg'=>0,'count'=>0];
+	 }
 	 /**
        * 
        * get array of dimension according field, currently maximum support 3 level
@@ -211,10 +220,11 @@ class Cube extends OLAPClass
 	   *		hierarchy of dimension. Last element of array is the desire array to check. Maximum 3 element, as ['region','country','city']
 	   * @param object $filter to define filter parameter:  ['region'=>['SEA']] or ['region'=>['*']] or ['region'=>['SEA'],'country'=>['MY']],
 	   *		maximum support 3 element
-	   * @param string $dimensionlist either 'dimension' (show distinct value of dimension) or 'fact' (show index of fact under specific dimension)
+	   * @param string $valuetype either 'dimension' (show distinct value of dimension) or 'fact' (show index of fact under specific dimension)
+	   * @param array $aggs desired aggregated column wish to get, example [ ['sales'=>'sum'],['sales'=>'avg'],['cost'=>'max']..]
        * @return blankdimensionarray
        */
-	public function getDimensionValues($cube,$k,$filter=[],$isdimensionlist='dimension')
+	public function getDimensionValues(&$cube,&$k,&$filter=[],$valuetype='dimension',$aggs=array())
 	{
 		$r=[];
 		$setcount=count($k);		
@@ -233,15 +243,50 @@ class Cube extends OLAPClass
 						!isset($filter[$value]) ||
 						(isset($filter[$value]) &&  in_array($dindex, $filter[$value]))
 					)
-					{
-						
-						if($isdimensionlist=='dimension')
+					{						
+
+
+						switch($valuetype)
 						{
-							array_push($r, $dindex);	
-						}
-						else
-						{
-							$r=array_merge($r,$dobj['facts']);
+							case 'dimension':
+								array_push($r, $dindex);	
+							break;
+							case 'facts':
+								$r=array_merge($r,$dobj['facts']);
+							break;
+							case 'aggregate':
+								$tmpvalue=[];
+								$fieldname=$value;
+								$tmpvalue[$fieldname]=$dindex;								
+
+								foreach($dobj['aggregate'] as $fieldkey => $fieldobj)
+								{
+
+									$tmpvalue[$fieldkey]['sum']+=$fieldobj['sum'];
+									$tmpvalue[$fieldkey]['count']+=$fieldobj['count'];
+									if(!isset($tmpvalue[$fieldkey]['max']) || $tmpvalue[$fieldkey]['max'] < $fieldobj['max'])
+									{
+										$tmpvalue[$fieldkey]['max']=$fieldobj['max'];
+									}
+									if(!isset($tmpvalue[$fieldkey]['min']) || $tmpvalue[$fieldkey]['min'] < $fieldobj['min'])
+									{
+										$tmpvalue[$fieldkey]['min']=$fieldobj['min'];
+									}									
+									$tmpvalue[$fieldkey]['avg']=$tmpvalue[$fieldkey]['sum']/$tmpvalue[$fieldkey]['count'];
+								}
+
+								
+								$tmpsummary=[];
+								$tmpsummary[$fieldname]=$dindex;
+								//prepare every aggregated rows
+								foreach($aggs as $measureindex => $mobj)
+								{										
+									foreach ($mobj as $aggfieldname => $aggmethod) 
+									{$tmpsummary[$aggfieldname.'_'.$aggmethod]=$tmpvalue[$aggfieldname][$aggmethod];break;}
+
+								}
+								array_push($r,$tmpsummary);
+							break;
 						}
 					}
 					
@@ -274,15 +319,19 @@ class Cube extends OLAPClass
 			foreach($tmp as $i => $o)
 			{
 				foreach($o as $value=>$child)
-				{
+				{					
 
-					if($isdimensionlist=='dimension')
+
+					switch($valuetype)
 					{
-						array_push($r, $value);	
-					}
-					else
-					{
-					  $r=array_merge($r,$child['facts']);
+						case 'dimension':
+							array_push($r, $value);	
+						break;
+						case 'facts':
+							$r=array_merge($r,$child['facts']);
+						break;
+						case 'aggregate':
+						break;
 					}
 					
 				}
@@ -337,13 +386,16 @@ class Cube extends OLAPClass
 				foreach($o as $a=>$b)
 				{
 
-					if($isdimensionlist=='dimension')
+					switch($valuetype)
 					{
-						array_push($r, $a);	
-					}
-					else
-					{
-					  $r=array_merge($r,$b['facts']);
+						case 'dimension':
+							array_push($r, $a);	
+						break;
+						case 'facts':
+							$r=array_merge($r,$b['facts']);
+						break;
+						case 'aggregate':
+						break;
 					}
 					
 				}
@@ -352,17 +404,22 @@ class Cube extends OLAPClass
  
 		}
 		
-		if($isdimensionlist=='dimension')
+		switch($valuetype)
 		{
-			sort($r,SORT_STRING);
+			case 'dimension':
+				sort($r,SORT_STRING);
+			break;
+			case 'facts':
+				sort($r);
+			break;
+			case 'aggregate':
+				//do nothing yet
+			break;
 		}
-		else
-		{
-		  sort($r);
-		}
+		
 
 		return $r;
 
 	}
-
+	
 }
