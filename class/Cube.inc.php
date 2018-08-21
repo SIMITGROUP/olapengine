@@ -50,6 +50,8 @@ class Cube extends OLAPClass
 		$dimensiondata=$this->computeParentFactsArray($dimensiondata,$measures,$facts);
 		$cube['dimensionmasterdata']=$dimensiondata;
 
+		$this->fieldtypes=$this->generateFieldTypeList($dimensions);
+		
 		return $cube;
 	}
 
@@ -238,11 +240,7 @@ class Cube extends OLAPClass
 			$value=$k[0];
 			foreach($cube['dimensionmasterdata'][$value]['data'] as $dindex =>$dobj)
 				{			
-					if(
-						$filter[$value][0]=='*' || 
-						!isset($filter[$value]) ||
-						(isset($filter[$value]) &&  in_array($dindex, $filter[$value]))
-					)
+					if($this->checkDimensionFilter($dindex,$filter[$value],$value))
 					{						
 
 
@@ -303,14 +301,8 @@ class Cube extends OLAPClass
 			{			
 
 
-				if( 
-					$filter[$value1][0]=='*' || 
-					!isset($filter[$value1]) ||
-					( isset($filter[$value1]) &&  in_array($dindex, $filter[$value1]) )
-
-					)
-				{
-					
+				if($this->checkDimensionFilter($dindex,$filter[$value1],$value1))
+				{					
 					array_push($tmp, $dobj[$value2]['data']);
 				}
 				
@@ -348,13 +340,7 @@ class Cube extends OLAPClass
 
 			foreach($cube['dimensionmasterdata'][$value1]['data'] as $dindex =>$dobj)
 			{			
-
-
-				if(
-					$filter[$value1][0]=='*' || 
-					!isset($filter[$value1]) || 
-					(isset($filter[$value1]) &&  in_array($dindex, $filter[$value1]))
-				)
+				if($this->checkDimensionFilter($dindex,$filter[$value1],$value1))
 				{
 					array_push($tmp1, $dobj[$value2]['data']);
 				}
@@ -367,12 +353,9 @@ class Cube extends OLAPClass
 			{	
 				// echo print_r($dob,true).':';	
 				foreach($dob as $dindex => $dobj)
-				{					
-					if(
-						$filter[$value2][0]=='*' ||
-						!isset($filter[$value2]) ||
-						(isset($filter[$value2]) &&  in_array($dindex, $filter[$value2]))
-					)
+				{				
+
+				if($this->checkDimensionFilter($dindex,$filter[$value2],$value2))
 					{
 						array_push($tmp2, $dobj[$value3]['data']);
 					}

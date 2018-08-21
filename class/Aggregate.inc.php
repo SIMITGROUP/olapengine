@@ -2,7 +2,7 @@
 
 class Aggregate extends OLAPClass
 {
-	private $facts;
+		
 	public function __construct(&$facts)
 	{
 		parent::__construct();	

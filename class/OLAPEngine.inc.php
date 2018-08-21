@@ -11,12 +11,112 @@
 class OLAPClass
 {
 
+	protected $facts;
+	protected $dimensions;
+	protected $measures;
+	protected $fieldtypes;
 	public function __construct()
 	{
 
 	}
 
+	/**
+       * 
+       * use to keep dimension setting and generate array of fieldtype for future processing
+       *
+       * @param array dimensions	   
+       * @return bool
+       */
 
+	protected function generateFieldTypeList(&$dimensions)
+	{
+		$fieldtypes=[];
+		foreach($dimensions as $i => $d)
+		{
+			
+			$fieldtypes[$d['field']]=$d['type'];
+			
+			if(isset($d['child']) && isset($d['child'][0]['field']))
+			{
+				$r=$this->generateFieldTypeList($d['child']);
+				foreach($r as $k=>$v)
+				{
+					$fieldtypes[$k]=$v;	
+				}				
+			}
+			
+			
+			
+
+		}
+
+		return $fieldtypes;
+		
+	}
+
+	/**
+       * 
+       * function use for evaluate filter string 
+       *
+       * @param mix string,integer, date or etc value to check
+	   * @param array of filter, can be string, number, date, or array with range record example: ['a',2008,'2008-01-01',[from=>2008,'to'=>2009]]
+       * @return bool
+       */
+	protected function checkDimensionFilter($value,$filters,$fieldname)
+	{
+
+		
+		$fieldtype=$this->fieldtypes[$fieldname];
+		
+		if(!isset($filters))
+		{
+			return true;
+		}		
+		else if($filters[0]=='*')
+		{
+			return true;		 
+		}
+		else 
+		{
+			foreach($filters as $i => $f)
+			{
+
+
+				// if($this->fieldtypes[])
+				// {
+
+				// }
+				if($value==$f)
+				{
+					return true;
+				}
+				else if(gettype($f)=='array' && isset($f['from']) && isset($f['to']))
+				{
+
+
+					//date have special process
+					if($fieldtype=='date')
+					{
+						
+						if($value>=$f['from'] && $value <= $f['to'])
+						{
+							return true;
+						}
+					}					
+					else //none date treatment
+					{
+						if($value>=$f['from'] && $value <= $f['to'])
+						{
+							return true;
+						}	
+					}
+					
+				}
+			}
+			return false;
+		}
+
+	}
 	/**
        * 
        * get partial row of of fact's data from indexes
@@ -94,6 +194,8 @@ class OLAPEngine extends OLAPClass
 	}
 
 
+
+
 	/**
        * 
        * Create Olap Cube, through Cube.inc.php. Facts is 1 flat php hash table, $dimensions is array descript the dimension & hierarchy,
@@ -107,11 +209,13 @@ class OLAPEngine extends OLAPClass
        */
 	public function createCube(&$facts,$dimensions=[],$measures=[])
 	{		
-		$c= $this->cube->createCube($facts,$dimensions,$measures);
+		$c= $this->cube->createCube($facts,$dimensions,$measures);		
+		
 
-		// $c=$this->agg->aggregateSummary($facts,$c);
+		
 		return $c;
 	}
+
 
 
 	/**
@@ -130,6 +234,7 @@ class OLAPEngine extends OLAPClass
 
 		return $this->cube->getDimensionValues($cube,$k,$filter,'dimension',[]);
 	}
+
 
 	/**
        * 
