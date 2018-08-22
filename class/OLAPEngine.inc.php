@@ -1,199 +1,26 @@
 <?php
+/**
+ * OLAP Engine is main entrance point of php developer, developer include this file to perform OLAP analysis
+ *
+ * @author     kstan <kstan@simitgroup.com>
+ */
+ini_set('opcache.enable', 0);
+include __DIR__.'/Cube.inc.php';
 
-  /**
-   * OLAPClass
-   * 
-   * 
-   * @package    OLAPClass
-   * @subpackage Controller
-   * @author     kstan <kstan@simitgroup.com>
-   */
-class OLAPClass
-{
+/**
+ * OLAPEngine class
+ */
 
-	protected $facts;
-	protected $dimensions;
-	protected $measures;
-	protected $fieldtypes;
+class OLAPEngine
+{	
+	private $version='0.1';
+	/**
+	 * OLAPEngine constructor
+	 */
 	public function __construct()
 	{
 
 	}
-
-	/**
-       * 
-       * use to keep dimension setting and generate array of fieldtype for future processing
-       *
-       * @param array dimensions	   
-       * @return bool
-       */
-
-	protected function generateFieldTypeList(&$dimensions)
-	{
-		$fieldtypes=[];
-		foreach($dimensions as $i => $d)
-		{
-			
-			$fieldtypes[$d['field']]=$d['type'];
-			
-			if(isset($d['child']) && isset($d['child'][0]['field']))
-			{
-				$r=$this->generateFieldTypeList($d['child']);
-				foreach($r as $k=>$v)
-				{
-					$fieldtypes[$k]=$v;	
-				}				
-			}
-			
-			
-			
-
-		}
-
-		return $fieldtypes;
-		
-	}
-
-	/**
-       * 
-       * function use for evaluate filter string 
-       *
-       * @param mix string,integer, date or etc value to check
-	   * @param array of filter, can be string, number, date, or array with range record example: ['a',2008,'2008-01-01',[from=>2008,'to'=>2009]]
-       * @return bool
-       */
-	protected function checkDimensionFilter($value,$filters,$fieldname)
-	{
-
-		
-		$fieldtype=$this->fieldtypes[$fieldname];
-		
-		if(!isset($filters))
-		{
-			return true;
-		}		
-		else if($filters[0]=='*')
-		{
-			return true;		 
-		}
-		else 
-		{
-			foreach($filters as $i => $f)
-			{
-
-
-				// if($this->fieldtypes[])
-				// {
-
-				// }
-				if($value==$f)
-				{
-					return true;
-				}
-				else if(gettype($f)=='array' && isset($f['from']) && isset($f['to']))
-				{
-
-
-					//date have special process
-					if($fieldtype=='date')
-					{
-						
-						if($value>=$f['from'] && $value <= $f['to'])
-						{
-							return true;
-						}
-					}					
-					else //none date treatment
-					{
-						if($value>=$f['from'] && $value <= $f['to'])
-						{
-							return true;
-						}	
-					}
-					
-				}
-			}
-			return false;
-		}
-
-	}
-	/**
-       * 
-       * get partial row of of fact's data from indexes
-       *
-       * @param array $facts long data in hash table
-	   * @param array index, use to identify which row to return	   
-       * @return array
-       */
-	public function getFactsFromIndex(&$facts,&$indexes)
-	{
-		$data=[];
-		foreach($indexes as $i => $rowno)
-		{
-			array_push($data,$facts[$rowno]);
-		}
-		return $data;
-	}
-
-
-	/**
-       * 
-       * use to identified what is the data type, it will return string, date, number and etc
-       *
-       * @param mix $v 	
-       * @return string
-       */
-	public function getDataType($type)
-	{
-		
-			$type=gettype($v);;
-
-			if(isDate($v))
-			{
-
-				$type='date';
-			}
-			
-
-		return $type;
-	}
-}
-
-
-include __DIR__."/Cube.inc.php";
-include __DIR__."/Aggregate.inc.php";
-
-
-  /**
-   * OLAPEngine
-   * 
-   * 
-   * @package    OLAPEngine
-   * @subpackage Controller
-   * @author     kstan <kstan@simitgroup.com>
-   */
-
-
-class OLAPEngine extends OLAPClass
-{
-	private $cube;
-	private $agg;
-
-	  /**
-       * 
-       * Constructor
-       *       
-       * @return OLAPEngine
-       */
-	public function __construct()
-	{
-		
-		parent::__construct();
-		$this->cube = new Cube();
-		// $this->agg= new Aggregate();
-	}
-
-
 
 
 	/**
@@ -203,70 +30,161 @@ class OLAPEngine extends OLAPClass
        *
        * @param array $fact
        * @param array $dimensions [['field'=>'agent','type'=>'string'],[...]]
-       * @param array $measures [['field'=>'sales','type'=>'number','decimal'=>2,'prefix'=>'MYR'],...];
+       * @return object cube object
+       */
+	public function createCube(&$facts,&$dimensions)
+	{
+		$cube = new Cube();
+
+		if(count($dimensions)==0 || count($facts)==0)
+		{
+			return false;
+		}
+		else
+		{
+			$this->dimensionsetting=$dimensions;
+
+			
+			$cube->setVersion($this->version);
+			$cube->setFacts($facts);
+			$cube->setDimensionSetting($this->dimensionsetting);
+			
+			$dimensiondata=$this->generateDistinctDimensionSchema($dimensions);			
+			foreach($facts as $i => $row)
+			{
+				$res=$this->prepareDimensionMasterList($dimensiondata,$i,$row);
+				$dimensiondata=$res['data'];
+				$cube->addCell($res['cell']);
+				
+			}
+			$cube->setDimensionList($dimensiondata);
+			
+		}		
+		return $cube;
+		
+	}
+
+	/**
+       * 
+       * Create blank hierarchy dimension database, for use later
+       *
+       * @param array $dimension array of dimension
+
+       * @return blankdimensionarray
+       */
+	private function generateDistinctDimensionSchema($dim)
+	{
+		$d=[];		
+		
+		foreach($dim as $i => $do)
+		{
+			$dimensionname=$i;
+			//default as string
+			if(!isset($do['type']))
+			{
+				$do['type']='string';
+			}
+
+				$d[$dimensionname]=[];
+				
+		}
+
+		return $d;
+	}
+
+	/**
+       * 
+       * Build distinct dimension value, and store index fact index of each dimension
+       *
+       * @param array $fact
+       * @param array $dimensions [['field'=>'agent','type'=>'string'],[...]]
+
 
        * @return cube 
        */
-	public function createCube(&$facts,$dimensions=[],$measures=[])
-	{		
-		$c= $this->cube->createCube($facts,$dimensions,$measures);		
+	private function prepareDimensionMasterList($dimensiondata,$num,&$row)
+	{			
+		$cell=['fact_id'=>$num];	
+		foreach($dimensiondata as $fieldname => $dim_obj)
+		{
+			$dimensionvalue=$row[$fieldname];
+			$existingarr=$dimensiondata[$fieldname];
+
+			$dim_id=$this->getDimensionID($dimensionvalue,$existingarr);
+			//append into array if not exists										
+			if($dim_id==-1)
+			{					
+				//id=array_index, start from 0
+				$dim_id=count($existingarr);		
+				
+				$obj=['dim_id'=>$dim_id, 'dim_value'=>$dimensionvalue];
+
+				if(isset($this->dimensionsetting[$fieldname]['bundlefield']))
+				{
+
+
+					$bundles=$this->dimensionsetting[$fieldname]['bundlefield'];
+					foreach($bundles as $bi => $bfield)
+					{						
+						$obj[$bfield]=$row[$bfield];
+					}
+				}
+				array_push($dimensiondata[$fieldname],$obj);
+				// $dimensiondata[$fieldname]['data'][$dimensionvalue]['facts']=[$num];
+			}			
+
+			$cell[$fieldname]=$dim_id;
+		}
 		
+		return array('data'=>$dimensiondata,'cell'=>$cell);
+	}
 
-		
-		return $c;
+	private function getDimensionID($search,$array)
+	{
+		foreach($array as $a => $o)
+		{
+			if($search==$o['dim_value'])
+			{
+				return $o['dim_id'];
+			}
+
+		}
+		return -1;
+	}
+
+	public function sliceCube(&$cube,$dimensionname,$filters)
+	{
+		$cubecomponent=[];
+		$cubecomponent[$dimensionname]=$filters;
+		$subfacts=$cube->getSubFacts($cubecomponent);		
+		return $this->createCube($subfacts,$cube->getDimensionSetting());
+	}
+
+	public function diceCube(&$cube,$cubecomponent)
+	{
+		$subfacts=$cube->getSubFacts($cubecomponent);
+		return $this->createCube($subfacts,$cube->getDimensionSetting());
+	}
+}
+
+
+function writedebug($a,$title='')
+{	
+
+	if($title!='')
+	{
+		echo $title.'<br/>';
 	}
 
 
 
-	/**
-       * 
-       * get array of dimension according field, currently maximum support 3 level, call getDimensionValues() at Cube.inc.php
-       *
-       * @param object $cube variable created by createCube() 
-	   * @param array $k get dimension's data, ['region'] for region, or ['region','country'] for country. we shall define array according 
-	   *		hierarchy of dimension. Last element of array is the desire array to check. Maximum 3 element, as ['region','country','city']
-	   * @param object $filter to define filter parameter:  ['region'=>['SEA']] or ['region'=>['*']] or ['region'=>['SEA'],'country'=>['MY']],
-	   *		maximum support 3 element
-       * @return array of distinc dimension value
-       */
-	public function getDimensionList(&$cube,&$k,&$filter)
+	if(gettype($a)=='array' || gettype($a)=='object')
 	{
-
-		return $this->cube->getDimensionValues($cube,$k,$filter,'dimension',[]);
+		echo '<pre style="border:solid 1px #aaa">'.print_r($a,true).'</pre><br/>';	
 	}
-
-
-	/**
-       * 
-       * get array of fact's index for specific dimension (according filter), currently maximum support 3 level, call getDimensionValues() at Cube.inc.php
-       *
-       * @param object $cube variable created by createCube() 
-	   * @param array $k get dimension's data, ['region'] for region, or ['region','country'] for country. we shall define array according 
-	   *		hierarchy of dimension. Last element of array is the desire array to check. Maximum 3 element, as ['region','country','city']
-	   * @param object $filter to define filter parameter:  ['region'=>['SEA']] or ['region'=>['*']] or ['region'=>['SEA'],'country'=>['MY']],
-	   *		maximum support 3 element
-       * @return array of facts in that dimension value
-       */
-	public function getDimensionFactsIndex(&$cube,&$k,&$filter)
+	else
 	{
-		return $this->cube->getDimensionValues($cube,$k,$filter,'facts');
-	}	
-
-	/**
-       * 
-       * get array of aggregate result, currently maximum support 3 level, call getDimensionValues() at Cube.inc.php
-       *
-       * @param object $cube variable created by createCube() 
-	   * @param array $k get dimension's data, ['region'] for region, or ['region','country'] for country. we shall define array according 
-	   *		hierarchy of dimension. Last element of array is the desire array to check. Maximum 3 element, as ['region','country','city']
-	   * @param object $filter to define filter parameter:  ['region'=>['SEA']] or ['region'=>['*']] or ['region'=>['SEA'],'country'=>['MY']],
-	   *		maximum support 3 element
-       * @return array of aggregated result (sum/avg/count/min/max) in that dimension value
-       */
-	public function getAggregateResult(&$cube,&$k,&$filter,$aggs=[])
-	{
-
-		return $this->cube->getDimensionValues($cube,$k,$filter,'aggregate',$aggs);
+		echo $a.'<br/>';
 	}
-
+	
 }

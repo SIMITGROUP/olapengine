@@ -32,10 +32,13 @@ $dimensions=[
 	['field'=>'date','type'=>'date'],
 	]; 
 
-$measures=[
-	['field'=>'sales'],
-	['field'=>'cost']
-];
+// get all KL sales where date between 2017-01-01 to 2017-12-31
+// get total sales by item group by category
+
+// $measures=[
+// 	['field'=>'sales'],
+// 	['field'=>'cost']
+// ];
 
 
 /*
@@ -57,11 +60,11 @@ $measures=[
 */
 $facts = $data;
 $olap = new OLAPEngine();
-$column=['date']; 
+$column=['date@year','date@month']; 
 $filter=['date'=>[['from'=>'2018-01-01','to'=>'2018-12-31']]];
 
 $aggs=[['sales'=>'sum'],['sales'=>'count'],['sales'=>'avg'],['cost'=>'sum'],['cost'=>'count'],['cost'=>'avg']];
-$cube = $olap->createCube($facts,$dimensions,$measures);
+$cube = $olap->createCube($facts,$dimensions);
 $data1=$olap->getDimensionList($cube,$column,$filter);
 $data2=$olap->getDimensionFactsIndex($cube,$column,$filter);
 $data3=$olap->getFactsFromIndex($facts,$data2);

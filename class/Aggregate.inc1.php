@@ -2,7 +2,7 @@
 
 class Aggregate extends OLAPClass
 {
-		
+
 	public function __construct(&$facts)
 	{
 		parent::__construct();	
@@ -34,7 +34,7 @@ class Aggregate extends OLAPClass
 					$data[$fieldname]=array(
 						'sum'=>$r[$fieldname],
 						'count'=>1,
-						'avg'=>0,
+						
 						'max'=>$r[$fieldname],
 						'min'=>$r[$fieldname],
 					);	
@@ -59,12 +59,7 @@ class Aggregate extends OLAPClass
 			}
 		}
 
-		//calculate average by using sum/count
-		foreach($data as $fieldname => $aggobj)
-		{
-			$data[$fieldname]['avg']=$data[$fieldname]['sum'] / $data[$fieldname]['count'];
-		}
-
+		
 		return $data;
 
 	}

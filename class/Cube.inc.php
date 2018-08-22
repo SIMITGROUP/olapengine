@@ -1,408 +1,239 @@
 <?php
-  /**
-   * Cube
-   * 
-   * 
-   * @package    Cube
-   * @subpackage Controller
-   * @author     kstan <kstan@simitgroup.com>
-   */
 
-class Cube extends OLAPClass
+
+class Cube
 {
-
-	
-
-	private $data;
-	private $dimensiondata;
+	public $version;
+	private $dimensionsetting;
+	private $dimensionlist;
+	private $facts;
+	private $cells=[];
 	public function __construct()
 	{
-		parent::__construct();
+
 	}
 
-
-	/**
-       * 
-       * Create Olap Cube, through Cube.inc.php. Facts is 1 flat php hash table, $dimensions is array descript the dimension & hierarchy,
-       * $measures declare all measures. Loop facts to create cubes
-       *
-       * @param array $fact
-       * @param array $dimensions [['field'=>'agent','type'=>'string'],[...]]
-       * @param array $measures [['field'=>'sales','type'=>'number','decimal'=>2,'prefix'=>'MYR'],...];
-
-       * @return cube 
-       */
-	public function createCube(&$facts,$dimensions,$measures)
+	public function setVersion($version)
 	{
-
-		$cube=[
-			'dimensions'=>$dimensions,
-			'measures'=>$measures,
-		];
-
-		$dimensiondata=$this->generateDistinctDimensionSchema($dimensions);
-		foreach($facts as $i => $f)
-		{
-			$dimensiondata=$this->prepareDimensionMasterList($dimensiondata,$i,$f,$dimensions,0);						
-		}
-
-		$levelname='top';
-		$dimensiondata=$this->computeParentFactsArray($dimensiondata,$measures,$facts);
-		$cube['dimensionmasterdata']=$dimensiondata;
-
-		$this->fieldtypes=$this->generateFieldTypeList($dimensions);
-		
-		return $cube;
+		$this->version=$version;
 	}
+	public function getVersion()
+	{
+		return $this->version;	
+	}
+	public function setDimensionList($dimensionlist)
+	{		
+		$this->dimensionlist=$dimensionlist;
+	}
+	public function getDimensionList()
+	{
+		return $this->dimensionlist=$dimensionlist;	
+	}
+
+	public function setFacts(&$facts)
+	{
+		return $this->facts=$facts;	
+	}
+	public function getFacts()
+	{
+		return $this->facts;
+	}
+	public function setDimensionSetting($dimensionsetting)
+	{
+		$this->dimensionsetting=$dimensionsetting;
+	}
+	public function getDimensionSetting()
+	{
+		return $this->dimensionsetting;
+	}
+	public function drawCube()
+	{
+		writedebug($this);
+	}
+
+	public function addCell($cell)
+	{
+		$this->cells[]=$cell;
+	}
+
 
 
 	/**
        * 
-       * Break facts into multi-dimensional/hierarchy array, and store distinct value of each dimension
+       * this function will filter cells and return suitable cell index, the cells index array will later generate sub facts
        *
-       * @param array $fact
-       * @param array $dimensions [['field'=>'agent','type'=>'string'],[...]]
-       * @param array $measures [['field'=>'sales','type'=>'number','decimal'=>2,'prefix'=>'MYR'],...];
-
-       * @return cube 
+       * @param array $cubecomponent ['date'=>['2018-01-01',..], 'city'=>['KL',..],.. ]
+       * @return array cells 
        */
-	private function prepareDimensionMasterList($d,$rowno,$row,$dimensions,$level)
+	public function getCells($cubecomponent)
 	{		
 
-		
-		$level++;
-		$dimensionchildarr=[];
-		foreach($dimensions as $dn => $dobj)
-		{
-			if(isset($dobj['child']) && count ($dobj['child'])>0)
-			{
-				$childfield=$dobj['child'][0]['field'];
-				$dimensionchildarr[$dobj['field']]=['field'=>$childfield, 'dimension'=>$dobj['child']];
-			}
-			else
-			{
-				$dimensionchildarr[$dobj['field']]=['field'=>''];
-			}
+		// writedebug($this->cells,'all cells');
+		$subfactscell=[];
+		$filteredresult=[];
 
-			
+		// writedebug($this->cells);
+		
+		//no filter will return all, skip looping. count 1 = slice, count multiple as dice
+		if(!isset($cubecomponent) || count($cubecomponent)==0 || $cubecomponent=='' )
+		{
+			return [];
 		}
 
-		foreach($d as $fieldname => $dim_obj)
+
+		//filter each dimension
+		$dimensioncount=0;
+		foreach($cubecomponent as $dimensionname => $filters)
 		{
-			$dimensionvalue=$row[$fieldname];					
-			if($dimensionchildarr[$fieldname]['field'] !='')
+			
+			$tmpcell=[];
+			$filteredresult=[];
+			// writedebug($tmpcell,'begin tmpcell of '.$dimensionname);
+			//make variable shorter
+			$dimlist=&$this->dimensionlist[$dimensionname];
+
+			foreach($dimlist as $i => $v)
 			{
-				$childfield=$dimensionchildarr[$fieldname]['field'];
-				$childfielddimension=$dimensionchildarr[$fieldname]['dimension'];
+				$id=$v['dim_id'];
+				$value=$v['dim_value'];
+				//filter specific dimension with the parameter
 
-				//if not exists this dimension																				
-				if(!isset($d[$fieldname]['data'][$dimensionvalue]))
-				{					
-					$d[$fieldname]['data'][$dimensionvalue]=[];
-					$d[$fieldname]['data'][$dimensionvalue][$childfield]=['data'=>[]];
+				
+				$res=$this->evaluateFilter($dimensionname,$value,$filters);
+				// writedebug($dimensionname. ',dim_id='.$id .'. value='.$value.', filter='.print_r($filters,true) .'"'.$res.'"');
+				if($res)
+				{
+					// writedebug('append dim_id='.$v['dim_id']);
+					array_push($filteredresult,$v['dim_id']);
+				}			
+
+			}
+			// writedebug($filteredresult,'filteredresult');
+			//find out which cell is suitable from filtered result
+			foreach($this->cells as $index => $cell)
+			{
+				// writedebug($index.'.'.$cell[$dimensionname],'loop this->cells, till '.$cell[$dimensionname]);
+				if(in_array($cell[$dimensionname],$filteredresult))
+				{
+					// writedebug('<b style="color:green">inserted</b>');
+					array_push($tmpcell,$cell['fact_id']);
 				}
-				$d[$fieldname]['data'][$dimensionvalue]=$this->prepareDimensionMasterList($d[$fieldname]['data'][$dimensionvalue],$rowno,$row,$childfielddimension,$level);									
-
+			}
+			
+			
+			// writedebug($tmpcell,'end tmpcell');
+			if($dimensioncount==0)
+			{
+				$subfactscell=$tmpcell;
 			}
 			else
 			{
-				//append into array if not exists				
-				$existingarr=$d[$fieldname]['data'];
-				if(!isset($d[$fieldname]['data'][$dimensionvalue]))
-				{					
-					$d[$fieldname]['data'][$dimensionvalue]=[];
-					$d[$fieldname]['data'][$dimensionvalue]['facts']=[$rowno];
-					// =['facts'=>[$rowno]];
+				$subfactscell=array_intersect($subfactscell,$tmpcell);
+			}
+			
+
+			$dimensioncount++;
+		}		
+		
+
+		// writedebug($subfactscell,'subfactscell');
+		return $subfactscell;
+
+	}
+
+
+	/**
+       * 
+       * this function will return facts filter by dimension, it use for slice and dice a cube
+       *
+       * @param array $cubecomponent ['date'=>['2018-01-01',..], 'city'=>['KL',..],.. ]
+       * @return array cells 
+       */
+	public function getSubFacts($cubecomponent)
+	{		
+		$cells=$this->getCells($cubecomponent);
+		$subfacts=[];
+		
+		foreach($cells as $i =>$fact_id)
+		{
+			array_push($subfacts,$this->facts[$fact_id]);
+		}
+
+		return $subfacts;
+		
+
+	}
+
+	public function rollUp($dimensionname,$measures,$callback='')
+	{
+
+		if($callback!='')
+		{			
+			call_user_func($callback,'sample data');
+		}
+	}
+
+	private function evaluateFilter($dimensionname,$value,$filters)
+	{
+		$fieldtype=$this->dimensionsetting[$dimensionname]['type'];
+		foreach($filters as $i => $f)
+		{			
+			//select all, or match
+			if($f=='*' || $f==$value)
+			{				
+				return true;
+			}
+			//range filter
+			else if(gettype($f)=='array' && isset($f['from']) && isset($f['to']))
+			{
+				//date have special process
+				if($fieldtype=='date')
+				{
+					//assume it is year
+					if(strlen($f['from'])==4)
+					{
+						$f['from'].='-01-01';
+					}
+					if(strlen($f['to'])==4)
+					{
+						$f['to'].='-12-31';	
+					}
+
+					if(strlen($f['from'])==7)
+					{
+						$f['from'].='-01';
+					}
+					if(strlen($f['to'])==7)
+					{
+						$f['to'].='-31';	
+					}
+
+					if($value>=$f['from'] && $value <= $f['to'])
+					{
+						return true;
+					}		
 				}
 				else
 				{
-					array_push($d[$fieldname]['data'][$dimensionvalue]['facts'],$rowno);	
-				}
-			}
-			
-		}
-		return $d;
-	}
-
-
-
-	/**
-       * 
-       * This function will compute fact array to those parent hierarchy data
-       *
-       * @param array $dimensiondata
-       * @return dimensiondata 
-       */
-	private function computeParentFactsArray($dimensiondata,$measures,&$facts)
-	{
-		// echo 'under computeParentFactsArray:'.count($facts).'<br/>';
-		$agg = new Aggregate($facts);
-		$tmpfact=[];
-		foreach($dimensiondata as $fieldname => $obj)
-		{						
-			foreach($obj['data'] as $dimensionvalue => $dobj)
-			{
-				//mean this folder have facts array already, it is last level and we no need to do anything
-				if(isset($dobj['facts'])) 
-				{
-					$tmpfact=array_merge($tmpfact,$dobj['facts']);	
-					$dimensiondata[$fieldname]['data'][$dimensionvalue]['aggregate']=$agg->aggregateSummary($dobj['facts'],$measures);
-				}
-				else //we need to recursive define facts here
-				{						
-					$r=$this->computeParentFactsArray($dobj,$measures,$facts);
-					$tmpfact2=$r['facts'];
-					$r['aggregate']=$agg->aggregateSummary($tmpfact2,$measures);;
-					$dimensiondata[$fieldname]['data'][$dimensionvalue]=$r;					
-					$tmpfact=array_merge($tmpfact,$tmpfact2);
-					$tmpfact2=[];
+					if($value>=$f['from'] && $value <= $f['to'])
+					{
+						return true;
+					}
 				}
 
+				
 
 			}
 
 		}
-		
-		$dimensiondata['facts']=$tmpfact;
-		$dimensiondata['aggregate']=$agg->aggregateSummary($dimensiondata['facts'],$measures);
-		return $dimensiondata;
+		//no condition match
+		return false;
+
+
 
 	}
 
 
-	/**
-       * 
-       * Create blank hierarchy dimension database, for use later
-       *
-       * @param array $dimension array of dimension
-
-       * @return blankdimensionarray
-       */
-	private function generateDistinctDimensionSchema($dim)
-	{
-		$d=[];		
-		
-		foreach($dim as $i => $do)
-		{
-			$dimensionname=$do['field'];
-
-			// if($do['type']!='date')
-			// {
-				$d[$dimensionname]=['data'=>[]];
-			// }
-			// else
-			// {
-				//generate date hierarchy
-			// }
-			
-		}
-
-		return $d;
-	}
-
-
-	/**
-       * 
-       * Create blank aggregate hash result
-       *
-       * @param array $dimension array of dimension
-
-       * @return aggregated array
-       */
-	 private function genDefaultAggregateValue()
-	 {
-	 	return ['sum'=>0,'avg'=>0,'count'=>0];
-	 }
-	 /**
-       * 
-       * get array of dimension according field, currently maximum support 3 level
-       *
-       * @param object $cube variable created by createCube() 
-	   * @param array $k get dimension's data, ['region'] for region, or ['region','country'] for country. we shall define array according 
-	   *		hierarchy of dimension. Last element of array is the desire array to check. Maximum 3 element, as ['region','country','city']
-	   * @param object $filter to define filter parameter:  ['region'=>['SEA']] or ['region'=>['*']] or ['region'=>['SEA'],'country'=>['MY']],
-	   *		maximum support 3 element
-	   * @param string $valuetype either 'dimension' (show distinct value of dimension) or 'fact' (show index of fact under specific dimension)
-	   * @param array $aggs desired aggregated column wish to get, example [ ['sales'=>'sum'],['sales'=>'avg'],['cost'=>'max']..]
-       * @return blankdimensionarray
-       */
-	public function getDimensionValues(&$cube,&$k,&$filter=[],$valuetype='dimension',$aggs=array())
-	{
-		$r=[];
-		$setcount=count($k);		
-
-		if($setcount==0) // no dimension selected
-		{
-			$r=[];
-		}
-		else if($setcount==1) //get 1 dimension list
-		{
-			$value=$k[0];
-			foreach($cube['dimensionmasterdata'][$value]['data'] as $dindex =>$dobj)
-				{			
-					if($this->checkDimensionFilter($dindex,$filter[$value],$value))
-					{						
-
-
-						switch($valuetype)
-						{
-							case 'dimension':
-								array_push($r, $dindex);	
-							break;
-							case 'facts':
-								$r=array_merge($r,$dobj['facts']);
-							break;
-							case 'aggregate':
-								$tmpvalue=[];
-								$fieldname=$value;
-								$tmpvalue[$fieldname]=$dindex;								
-
-								foreach($dobj['aggregate'] as $fieldkey => $fieldobj)
-								{
-
-									$tmpvalue[$fieldkey]['sum']+=$fieldobj['sum'];
-									$tmpvalue[$fieldkey]['count']+=$fieldobj['count'];
-									if(!isset($tmpvalue[$fieldkey]['max']) || $tmpvalue[$fieldkey]['max'] < $fieldobj['max'])
-									{
-										$tmpvalue[$fieldkey]['max']=$fieldobj['max'];
-									}
-									if(!isset($tmpvalue[$fieldkey]['min']) || $tmpvalue[$fieldkey]['min'] < $fieldobj['min'])
-									{
-										$tmpvalue[$fieldkey]['min']=$fieldobj['min'];
-									}									
-									$tmpvalue[$fieldkey]['avg']=$tmpvalue[$fieldkey]['sum']/$tmpvalue[$fieldkey]['count'];
-								}
-
-								
-								$tmpsummary=[];
-								$tmpsummary[$fieldname]=$dindex;
-								//prepare every aggregated rows
-								foreach($aggs as $measureindex => $mobj)
-								{										
-									foreach ($mobj as $aggfieldname => $aggmethod) 
-									{$tmpsummary[$aggfieldname.'_'.$aggmethod]=$tmpvalue[$aggfieldname][$aggmethod];break;}
-
-								}
-								array_push($r,$tmpsummary);
-							break;
-						}
-					}
-					
-				}			
-		}
-		else if($setcount==2) //get 2nd dimension list,  with filter according $filter
-		{
-			$value1=$k[0];
-			$value2=$k[1];
-			// print_r($cube['dimensionmasterdata'][$value1]['data']);
-			$tmp=[];
-
-			foreach($cube['dimensionmasterdata'][$value1]['data'] as $dindex =>$dobj)
-			{			
-
-
-				if($this->checkDimensionFilter($dindex,$filter[$value1],$value1))
-				{					
-					array_push($tmp, $dobj[$value2]['data']);
-				}
-				
-			}		
-			
-			foreach($tmp as $i => $o)
-			{
-				foreach($o as $value=>$child)
-				{					
-
-
-					switch($valuetype)
-					{
-						case 'dimension':
-							array_push($r, $value);	
-						break;
-						case 'facts':
-							$r=array_merge($r,$child['facts']);
-						break;
-						case 'aggregate':
-						break;
-					}
-					
-				}
-				
-			}			 
-		}
-		else if($setcount==3) //get 3rd dimension list, with filter according $filter
-		{
-			$value1=$k[0];
-			$value2=$k[1];
-			$value3=$k[2];
-			// print_r($cube['dimensionmasterdata'][$value1]['data']);
-			$tmp1=[];
-
-			foreach($cube['dimensionmasterdata'][$value1]['data'] as $dindex =>$dobj)
-			{			
-				if($this->checkDimensionFilter($dindex,$filter[$value1],$value1))
-				{
-					array_push($tmp1, $dobj[$value2]['data']);
-				}
-				
-			}
-			
-			$tmp2=[];
-
-			foreach($tmp1 as $di =>$dob)
-			{	
-				// echo print_r($dob,true).':';	
-				foreach($dob as $dindex => $dobj)
-				{				
-
-				if($this->checkDimensionFilter($dindex,$filter[$value2],$value2))
-					{
-						array_push($tmp2, $dobj[$value3]['data']);
-					}
-
-				}	
-			}		
-
-			
-			foreach($tmp2 as $i => $o)
-			{
-				foreach($o as $a=>$b)
-				{
-
-					switch($valuetype)
-					{
-						case 'dimension':
-							array_push($r, $a);	
-						break;
-						case 'facts':
-							$r=array_merge($r,$b['facts']);
-						break;
-						case 'aggregate':
-						break;
-					}
-					
-				}
-				
-			}		
- 
-		}
-		
-		switch($valuetype)
-		{
-			case 'dimension':
-				sort($r,SORT_STRING);
-			break;
-			case 'facts':
-				sort($r);
-			break;
-			case 'aggregate':
-				//do nothing yet
-			break;
-		}
-		
-
-		return $r;
-
-	}
 	
+
 }
