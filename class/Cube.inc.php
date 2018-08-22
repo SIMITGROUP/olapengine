@@ -25,27 +25,46 @@ class Cube
 	{		
 		$this->dimensionlist=$dimensionlist;
 	}
-	public function getDimensionList()
+	public function getDimensionList($dimensionname='')
 	{
-		return $this->dimensionlist=$dimensionlist;	
+		if($dimensionname=='')
+		{
+			return $this->dimensionlist;	
+		}
+		else
+		{
+			return $this->dimensionlist[$dimensionname];
+		}
+		
 	}
 
 	public function setFacts(&$facts)
 	{
 		return $this->facts=$facts;	
 	}
+
 	public function getFacts()
 	{
 		return $this->facts;
 	}
+
 	public function setDimensionSetting($dimensionsetting)
 	{
 		$this->dimensionsetting=$dimensionsetting;
 	}
-	public function getDimensionSetting()
+
+	public function getDimensionSetting($dimensionname='')
 	{
-		return $this->dimensionsetting;
+		if($dimensionname=='')
+		{
+			return $this->dimensionsetting;	
+		}
+		else
+		{
+			return $this->dimensionsetting[$dimensionname];
+		}
 	}
+
 	public function drawCube()
 	{
 		writedebug($this);
@@ -164,13 +183,130 @@ class Cube
 
 	}
 
-	public function rollUp($dimensionname,$measures,$callback='')
+
+	/**
+       * 
+       * this function will summarise single dimension data according measures
+       *
+       * @param array $measures ['sales', ['field'=>'cost','agg'=>'sum'], ['field'=>'profit','callback'=>'callprofit']]
+       *        call back have will return 2 variable, 1st variable is currentrow and 2nd is broughforward aggregate result
+       *		you can create a function similar like:
+       *			function callback1($row,$broughforward)
+	   *			{
+	   *					return $broughforward['sales']['sum']-$broughforward['cost']['sum'] ;
+	   *				}
+       *      return result will assign to field 'profit'.
+       * @return mix
+       */
+	public function rollUp($dimensionname,$measures,$addbundle=false)
 	{
 
-		if($callback!='')
-		{			
-			call_user_func($callback,'sample data');
+		$tmp_arr=$this->getDimensionList($dimensionname);
+
+		//looping cell, transfer value into $res
+		foreach($this->cells as $ci =>$cobj)
+		{
+			$dim_id=$cobj[$dimensionname];
+			$fact_id=$cobj['fact_id'];
+			$row=$this->facts[$fact_id]; //fact record
+
+
+			//summarise data, before draw output
+			foreach($measures as $mi => $mobj)
+			{
+
+				if(gettype($mobj)!='array')
+				{
+					$mobj=['field'=>$mobj,'agg'=>'sum'];
+				}
+
+				if(isset($mobj['agg']))
+				{						
+					$field=$mobj['field'];
+					$tmp_arr[$dim_id][$field]['sum']+=$row[$field];
+					$tmp_arr[$dim_id][$field]['count']++;
+
+					if(!isset($tmp_arr[$dim_id][$field]['max']) || $tmp_arr[$dim_id][$field]['max'] < $row[$field]  )
+					{
+						$tmp_arr[$dim_id][$field]['max']=$row[$field];	
+					}
+					if(!isset($tmp_arr[$dim_id][$field]['min']) || $tmp_arr[$dim_id][$field]['min'] > $row[$field]  )
+					{
+						$tmp_arr[$dim_id][$field]['min']=$row[$field];	
+					}
+					
+					$tmp_arr[$dim_id][$field]['avg']=$tmp_arr[$dim_id][$field]['sum']/$tmp_arr[$dim_id][$field]['count'];
+				}
+				else if(isset($mobj['callback']) && $mobj['callback']!='') // use custom callback function
+				{
+
+					$field=$mobj['field'];
+					$callback=$mobj['callback'];
+
+					$tmp_arr[$dim_id][$field] = call_user_func($callback,$row,$tmp_arr[$dim_id]);
+				}
+
+
+				//add bundle data when needed
+				if($addbundle)
+				{
+					$dimensionsseting=$this->getDimensionSetting($dimensionname);
+					if(isset($dimensionsseting['bundlefield']))
+					{
+						foreach($dimensionsseting['bundlefield'] as $bi => $bundlefield)
+						{
+							$tmp_arr[$dim_id][$bundlefield] = $row[$bundlefield];
+						}
+					}
+					
+				}
+
+
+
+			}
+
 		}
+		
+		//draw proper output
+		$res=[];
+		foreach($tmp_arr as $ti => $tobj)
+		{
+			$tmp=[];
+			$tmp[$dimensionname]=$tobj['dim_value'];
+			if(isset($dimensionsseting['bundlefield']))
+			{
+				foreach($dimensionsseting['bundlefield'] as $bi => $bundlefield)
+				{
+					$tmp[$bundlefield]=  $tobj[$bundlefield];
+				}
+			}
+
+
+			foreach($measures as $mi => $mobj)
+			{
+				if(gettype($mobj)!='array')
+				{
+					$tmp[$mobj]=$tmp_arr[$ti][$mobj]['sum'];
+				}
+				else if(isset($mobj['agg']))
+				{
+					$field=$mobj['field'];
+					$agg=$mobj['agg'];
+					$newfieldname=$field.'_'.$agg;
+					$tmp[$newfieldname]=$tmp_arr[$ti][$field][$agg];
+				}
+				else if(isset($mobj['callback']) && $mobj['callback']!='') // use custom callback function
+				{
+					$field=$mobj['field'];
+					$tmp[$field]=$tmp_arr[$ti][$field];
+				}
+
+			}
+			array_push($res,$tmp);
+		}
+		
+		return $res;
+		
 	}
 
 	private function evaluateFilter($dimensionname,$value,$filters)

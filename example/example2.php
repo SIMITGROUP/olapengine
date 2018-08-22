@@ -1,6 +1,6 @@
 <?php
 // get data $data
-// ini_set('opcache.enable', 0);
+ini_set('opcache.enable', 0);
 
 // $array1 = array(8, 3, 2);
 // $array2 = array(3, 9, 1);
@@ -67,7 +67,7 @@ if(file_exists($olapfile))
 //		writedebug($getfilterfact,'getfilterfact');
 
 
-		$dimension='date';
+		$dimension='code';
 		$measures=[
 			'sales',//sum sales, default is sum, return as sales
 			['field'=>'sales','agg'=>'sum'], //sum sales, return sales_sum
@@ -75,10 +75,16 @@ if(file_exists($olapfile))
 			['field'=>'sales','agg'=>'max'], //get max sales, return sales_max
 			['field'=>'sales','agg'=>'min'], //get min sales, return sales_min
 			['field'=>'sales','agg'=>'avg'], //get avg sales, return sales_avg
-			['field'=>'profit','callback'='callback1'], //custom,  'profit' not exists, it will run callback to get value
-		];
-		$cube->rollUp('date',$measures);
+			['field'=>'cost','agg'=>'sum'], //sum sales, return sales_sum
+			['field'=>'cost','agg'=>'count'], //count sales, return sales_count
+			['field'=>'cost','agg'=>'max'], //get max sales, return sales_max
+			['field'=>'cost','agg'=>'min'], //get min sales, return sales_min
+			['field'=>'cost','agg'=>'avg'], //get avg sales, return sales_avg
 
+			['field'=>'profit','callback'=>'callback1'], //custom,  'profit' not exists, it will run callback to get value
+		];
+		$summary=$cube->rollUp($dimension,$measures,true);
+		writedebug($summary);
 		
 		// $cube->rollUp('date',$measures);
 		
@@ -92,7 +98,7 @@ else
 
 
 
-function callback1($data='')
+function callback1($row,$broughforward)
 {
-	echo 'call back data: '.$data;
+	return $broughforward['sales']['sum']-$broughforward['cost']['sum'] ;
 }
