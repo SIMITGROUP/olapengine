@@ -1,78 +1,103 @@
 <?php
+// get data $data
+ini_set('opcache.enable', 0);
 
+// $array1 = array(8, 3, 2);
+// $array2 = array(3, 9, 1);
+// $array1 = array_intersect($array1, $array2);
+// print_r($array1);
 
-// $a=['2018-03-01',['from'=>'2018-01-03','to'=>'2019-01-31'],2018,3434.3,'2018'];
-
-
-// foreach($a as $b=>$c)
-// {
-// 	echo  $b.'. ' .gettype($c).'<br/>';
-// }
 // die;
 
 
-
-
-include "../class/OLAPEngine.inc.php";
 include 'examplearray.php';
-
-
+$facts=$data;
+$dimensions=['city','country','region', 'agent','item','date']; //simple, it will identify data type base on first row of facts, flat
 $dimensions=[
-	['field'=>'region','type'=>'string',
-			'child'=>[
-				['field'=>'country','type'=>'string',
-					'child'=>[
-						['field'=>'city','type'=>'string']
-					]
-				]
-			]
-	],
-	['field'=>'agent','type'=>'string'],
-	['field'=>'item','type'=>'string'],	
-	['field'=>'date','type'=>'date'],
-	]; 
+	'city'=>['type'=>'string','parent'=>'country'],
+	// 'country'=>['type'=>'string','parent'=>'country'],
+	// 'region'=>['type'=>'string'], 
+	'agent'=>['type'=>'string',],
+	'code'=>['type'=>'string','parent'=>'category','bundlefield'=>['item','sku']],
+	'date'=>['type'=>'date','datehierarchy'=>['year','month','day','week','quarter','']]
+	]; //more complete defination
 
-// get all KL sales where date between 2017-01-01 to 2017-12-31
-// get total sales by item group by category
+$olapfile=__DIR__."/../class/OLAPEngine.inc.php";
+if(file_exists($olapfile))
+{
+	include $olapfile;	
+	$olapengine= new OLAPEngine();
+	$cube=$olapengine->createCube($facts,$dimensions);
+	// writedebug($facts,'facts');
+	if($cube)
+	{		
+		// $cube->drawCube();
+	
+		//slice cube within date range
+		$filters= ['from'=>'2018-01-01', 'to'=>'2018-01-31'];		
+		$cube_3day=$olapengine->sliceCube($cube,'date',$filters);
+		// writedebug($cube_3day);
 
-// $measures=[
-// 	['field'=>'sales'],
-// 	['field'=>'cost']
-// ];
-
-
-/*
-1. document_date  (year)
-	data
-		2018
-			2. month
-				data
-					1
-						3. day
-							data
-								1.
-								2.
-								...
-								31.
-			3. quarter
-				convert as array range (1-3),(4-6)...
-
-*/
-$facts = $data;
-$olap = new OLAPEngine();
-$column=['date@year','date@month']; 
-$filter=['date'=>[['from'=>'2018-01-01','to'=>'2018-12-31']]];
-
-$aggs=[['sales'=>'sum'],['sales'=>'count'],['sales'=>'avg'],['cost'=>'sum'],['cost'=>'count'],['cost'=>'avg']];
-$cube = $olap->createCube($facts,$dimensions);
-$data1=$olap->getDimensionList($cube,$column,$filter);
-$data2=$olap->getDimensionFactsIndex($cube,$column,$filter);
-$data3=$olap->getFactsFromIndex($facts,$data2);
-$data4=$olap->getAggregateResult($cube,$column,$filter,$aggs);
-echo '<pre>cube:'.print_r($cube,true).'</pre>';
+		
+		//create dice cube within multiple dimension filter
+		$dicecomponent=[
+				'date'=>[['from'=>'2018-01-01','to'=>'2018-12-31']],		
+				'city'=>['KL','JB'],
+		];
+		$cube_item_city=$olapengine->diceCube($cube,$dicecomponent);
+		// writedebug($cube_item_city);
+		
 
 
-echo '<pre>data1:'.print_r($data1,true).'</pre>';
-echo '<pre>data2:'.print_r($data2,true).'</pre>';
-echo '<pre>data3:'.print_r($data3,true).'</pre>';
-echo '<pre>data4:'.print_r($data4,true).'</pre>';
+		//get brz table with filter within specific original cube, record return
+		$filtercomponent=[
+				'date'=>[['from'=>'2018-01-01','to'=>'2018-12-31']],				
+				'city'=>['BRZ'],
+		];
+		$getfilterfact=$cube->getSubFacts($filtercomponent);
+		// writedebug($getfilterfact,'getfilterfact');
+
+
+		//get brz table with filter within KL/JB cube, no data return
+		$filtercomponent=[
+				'date'=>[['from'=>'2018-01-01','to'=>'2018-12-31']],				
+				'city'=>['BRZ'],
+		];
+		$getfilterfact=$cube_item_city->getSubFacts($filtercomponent);
+//		writedebug($getfilterfact,'getfilterfact');
+
+
+		$dimension='code';
+		$measures=[
+			'sales',//sum sales, default is sum, return as sales
+			['field'=>'sales','agg'=>'sum'], //sum sales, return sales_sum
+			['field'=>'sales','agg'=>'count'], //count sales, return sales_count
+			['field'=>'sales','agg'=>'max'], //get max sales, return sales_max
+			['field'=>'sales','agg'=>'min'], //get min sales, return sales_min
+			['field'=>'sales','agg'=>'avg'], //get avg sales, return sales_avg
+			['field'=>'cost','agg'=>'sum'], //sum sales, return sales_sum
+			['field'=>'cost','agg'=>'count'], //count sales, return sales_count
+			['field'=>'cost','agg'=>'max'], //get max sales, return sales_max
+			['field'=>'cost','agg'=>'min'], //get min sales, return sales_min
+			['field'=>'cost','agg'=>'avg'], //get avg sales, return sales_avg
+
+			['field'=>'profit','callback'=>'callback1'], //custom,  'profit' not exists, it will run callback to get value
+		];
+		$summary=$cube->rollUp($dimension,$measures,true);
+		// writedebug($summary);
+		
+		
+		
+	}
+}
+else
+{
+	echo $olapfile .' not exits!';
+}
+
+
+
+function callback1($row,$broughforward)
+{
+	return $broughforward['sales']['sum']-$broughforward['cost']['sum'] ;
+}
