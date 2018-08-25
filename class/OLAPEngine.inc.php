@@ -14,6 +14,7 @@ include __DIR__.'/Cube.inc.php';
 class OLAPEngine
 {	
 	private $version='0.1';
+	private $errormsg='';
 	/**
 	 * OLAPEngine constructor
 	 */
@@ -22,8 +23,20 @@ class OLAPEngine
 
 	}
 
-
 	/**
+     * 
+     * return error msg 
+     *
+     * @return string errormsg
+     */
+	public function getError()
+	{
+		return $this->errormsg;
+	}
+
+
+
+	 /**
        * 
        * Create Olap Cube, through Cube.inc.php. Facts is 1 flat php hash table, $dimensions is array descript the dimension & hierarchy,
        * $measures declare all measures.
@@ -32,7 +45,7 @@ class OLAPEngine
        * @param array $dimensions [['field'=>'agent','type'=>'string'],[...]]
        * @return object cube object
        */
-	public function createCube(&$facts,&$dimensions)
+	public function createCube(&$facts,$dimensions,$computedimension=true)
 	{
 		$cube = new Cube();
 
@@ -41,30 +54,36 @@ class OLAPEngine
 			return false;
 		}
 		else
-		{
-			$this->dimensionsetting=$dimensions;
-
-			
+		{			
 			$cube->setVersion($this->version);
 			$cube->setFacts($facts);
-			$cube->setDimensionSetting($this->dimensionsetting);
+			$cube->setDimensionSetting($dimensions,$computedimension);
 			
-			$dimensiondata=$this->generateDistinctDimensionSchema($dimensions);			
+			
+			
+			$dimensiondata=$this->generateDistinctDimensionSchema($cube);			
+			
 			foreach($facts as $i => $row)
-			{
+			{				
 				$res=$this->prepareDimensionMasterList($dimensiondata,$i,$row);
+				if(!$res)
+				{
+					return false;
+				}
+			
 				$dimensiondata=$res['data'];
 				$cube->addCell($res['cell']);
 				
 			}
 			$cube->setDimensionList($dimensiondata);
-			
+				// writedebug($dimensiondata,'setDimensionList');
+				// writedebug($cube->getDimensionList(),'getDimensionList at createcube');
 		}		
 		return $cube;
 		
 	}
 
-	/**
+	 /**
        * 
        * Create blank hierarchy dimension database, for use later
        *
@@ -72,45 +91,53 @@ class OLAPEngine
 
        * @return blankdimensionarray
        */
-	private function generateDistinctDimensionSchema($dim)
+	private function generateDistinctDimensionSchema($cube)
 	{
 		$d=[];		
-		
-		foreach($dim as $i => $do)
-		{
-			$dimensionname=$i;
-			//default as string
-			if(!isset($do['type']))
+		$dimlist=$cube->getDimensionSetting();
+
+		if($dimlist)
+		{		
+			foreach($dimlist as $i => $do)
 			{
-				$do['type']='string';
+				$dimensionname=$i;
+				//default as string
+				if(!isset($do['type']))
+				{
+					$do['type']='string';
+				}
+					$d[$dimensionname]=[];					
 			}
-
-				$d[$dimensionname]=[];
-				
+			return $d;
 		}
+		else
+		{
+			return false;
+		}
+		
 
-		return $d;
+		
 	}
 
-	/**
+	 /**
        * 
        * Build distinct dimension value, and store index fact index of each dimension
        *
        * @param array $fact
        * @param array $dimensions [['field'=>'agent','type'=>'string'],[...]]
-
-
        * @return cube 
        */
 	private function prepareDimensionMasterList($dimensiondata,$num,&$row)
 	{			
+
 		$cell=['fact_id'=>$num];	
 		foreach($dimensiondata as $fieldname => $dim_obj)
 		{
 			$dimensionvalue=$row[$fieldname];
 			$existingarr=$dimensiondata[$fieldname];
 
-			$dim_id=$this->getDimensionID($dimensionvalue,$existingarr);
+			 $dim_id=$this->getDimensionID($dimensionvalue,$existingarr);
+
 			//append into array if not exists										
 			if($dim_id==-1)
 			{					
@@ -122,22 +149,47 @@ class OLAPEngine
 				if(isset($this->dimensionsetting[$fieldname]['bundlefield']))
 				{
 
-
 					$bundles=$this->dimensionsetting[$fieldname]['bundlefield'];
 					foreach($bundles as $bi => $bfield)
 					{						
 						$obj[$bfield]=$row[$bfield];
 					}
 				}
+
+				if(isset($this->dimensionsetting[$fieldname]['hierarchy']) && count($this->dimensionsetting[$fieldname]['hierarchy'])>0)
+				{
+
+					//hierarchy support more then 1 tree
+					$hierarchy=$this->dimensionsetting[$fieldname]['hierarchy'];
+					foreach($hierarchy as $hi => $hobj)
+					{	
+					
+					//each hierarchy support more then 1 level
+						foreach($hobj as $hierarchyfieldname)
+						{	
+							if($fieldname==$hierarchyfieldname)
+							{
+								$this->errormsg='You shall not assign "'.$hierarchyfieldname.'" into hierarchy of field "'.$fieldname.'"';
+								return false;
+
+							}
+							$obj[$hierarchyfieldname]=$row[$hierarchyfieldname];
+							// $obj[$bfield];
+						}
+					}
+
+
+
+				}
+				
 				array_push($dimensiondata[$fieldname],$obj);
-				// $dimensiondata[$fieldname]['data'][$dimensionvalue]['facts']=[$num];
 			}			
 
 			$cell[$fieldname]=$dim_id;
-		}
-		
+		}		
 		return array('data'=>$dimensiondata,'cell'=>$cell);
 	}
+
 
 	private function getDimensionID($search,$array)
 	{
@@ -157,13 +209,13 @@ class OLAPEngine
 		$cubecomponent=[];
 		$cubecomponent[$dimensionname]=$filters;
 		$subfacts=$cube->getSubFacts($cubecomponent);		
-		return $this->createCube($subfacts,$cube->getDimensionSetting());
+		return $this->createCube($subfacts,$cube->getDimensionSetting(),false);
 	}
 
 	public function diceCube(&$cube,$cubecomponent)
 	{
 		$subfacts=$cube->getSubFacts($cubecomponent);
-		return $this->createCube($subfacts,$cube->getDimensionSetting());
+		return $this->createCube($subfacts,$cube->getDimensionSetting(),false);
 	}
 }
 
@@ -173,7 +225,7 @@ function writedebug($a,$title='')
 
 	if($title!='')
 	{
-		echo $title.'<br/>';
+		echo '<u>'.$title.'</u><br/>';
 	}
 
 
