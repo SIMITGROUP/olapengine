@@ -367,120 +367,234 @@ class Cube
 	{
 		$basedimension='';
 		//in others field? If yes get the base dimension and get the hierarchy
-		if(isset($this->othersField[$column]))
+		if(isset($this->dimensionsetting[$column]) && isset($this->dimensionsetting[$column]['basecolumn']))
 		{
-
-			$basedimension=$this->othersField[$column]['basedimension'];			
+			$basedimension=$this->dimensionsetting[$column]['basecolumn'];			
 		} //it is basedimension
-		else if(isset($this->dimensionsetting[$column]) && count($this->dimensionsetting[$basedimension]['hierarchy'])>0)
-		{		
+		else if(isset($this->dimensionsetting[$column]) && count($this->dimensionsetting[$column]['hierarchy'])>0)
+		{			
 				$basedimension=$column;				
 		}
 		else //supplied $column not belong to any hierarchy, it dont have next level and no support drill up/down
-		{
+		{			
 			$this->errormsg=sprintf("%s not found in any dimension and hierarchy. ",$column);
 			return false;
 		}
 
 		return $basedimension;
 	}
-	/**
-	  * this function use to identify drill up/drill down to which field name
-	  * @param string $columnname column name in part of hierarchy
-	  * @param string $hierarchyname=''  empty will use first hierarchy
-	  * @param int $offsetlevel=1, off set how many level, 1 = drill down upper level (state => country), -1 to lower level (state => city)
-	  * @return string $basedimensionname
-	  */
-	public function getNextLevelName($column,$hierarchyname='',$offsetlevel=-1)
+	
+
+
+	private function dimensionsExistsInWhichRow($rowarr=[],$dimensionarr=[])
 	{
-		$basedimension=$this->getBaseField($column);
-		$hierarchy=[];
-
-		//get suitable hierarchy
-		if($hierarchyname!='')
+		// writedebug($rowarr,'rowarr');
+		// writedebug($dimensionarr,'dimensionarr');
+		foreach($rowarr as $rownum=>$row)
 		{
-			$hierarchy=$this->dimensionsetting[$basedimension]['hierarchy'];
-		}
-		else
-		{
-			foreach($this->dimensionsetting[$basedimension]['hierarchy'] as $h =>$hierarchy)
+			$isexists=true;
+			foreach($dimensionarr as $dimensionname => $dimensionvalue)
 			{
-				break;
-			}
-		}
-
-		
-				
-		
-		foreach($hierarchy as $hindex=>$hfield)
-		{
-		
-			if($column==$hfield)
-			{
-			
-				$currentlevel=$hindex;				
-				// writedebug('currentlevel:'.$currentlevel,'currentlevel');
-				$newlevel=$currentlevel+$offsetlevel;
-				// writedebug('newlevel:'.$newlevel,'newlevel');
-
-				if($newlevel==-1)
+				// writedebug('$row[$dimensionname] => $dimensionvalue==='.$row[$dimensionname].' => '.$dimensionvalue,'compare');
+				if($row[$dimensionname] != $dimensionvalue)
 				{
-					// writedebug($basecolumn);
-					return $basecolumn;
-				}
-				if($newlevel<-1)
-				{
-					$this->errormsg=sprintf('"%s" found unexpected "%s" in hierarchy:',$column,$hfield);
-					return false;
+					// writedebug('not match');
+					$isexists=false;
+					//not found similar, continue next row
+					continue;
 				}
 				else
 				{
-					return $hierarchy[$newlevel];
+					// writedebug('matched');
 				}
-				
 
-
+			}//finish compare all dimension, if all match then isexists maintain true, it mean found same record
+			// writedebug("'".$exists."'",'exists');
+			if($isexists==true)
+			{
+				// writedebug($exists,'exists=true');
+				return $rownum;	
 			}
+			else
+			{
+				// writedebug($exists,'not exists, continue');
+				continue;
+			}
+			
+			
 		}
-					$this->errormsg=sprintf("%s not found in any dimension hierarchy. ",$column);
-					return false;			 	
+
+		//finish loop, not similar found
+		return -1;
+
 	}
 
-
-	
 
 	/**
-	 *
-	 * this function will drilldown 1 or more level, perform aggregate on $measure, group by next level of hierarchy field
-	 * @param string from dimensionname or hierarchy field, roll up from this field
-	 * @param array $measures
-	 * @return array $aggregatedresult
-	 */
+	 * this function convert dimension dim_id become value
+	 * @param string $dimensionname 
+	 * @param mix $dimensionvalue
+	 * @param mix value of that id
+	*/
 
-	public function drillDown($dimensionname,$filters,$measures,$level=1)
+	private function getDimensionValue($dimensionname,$dim_id=-1)
 	{
-		// $nextlevel=$level
-
-		// $nextdimension=$this->getNextLevelName($column,$hierarchyname='',$offsetlevel=-1)
-
-		return $this->aggregate($dimensionname,$measures,false);
+		$dimarr=$this->getDimensionList($dimensionname);
+		if($dim_id==-1 || !isset( $dimarr[$dim_id]))
+		{
+			$this->errormsg="Invalid value for ".$dim_id;
+			return false;
+		}
+		else
+		{
+			$val=$dimarr[$dim_id]['dim_value'];	
+			return $val;
+		}
+		
 	}
 
 
-
-	 /**
-        * 
-        * this is function will roll up 1 or more level,  perform aggregate on $measures, group by next level of hierarchy field.
-        * @param string from dimensionname or hierarchy field, roll up from this field
-        * @param array $measures ['sales', ['field'=>'cost','agg'=>'sum'], ['field'=>'profit','callback'=>'callprofit']]
-    	* @return array $aggregatedresult
-        */
-	public function rollUp($dimensionname,$measures,$level=1)
+	public function aggregateByMultiDimension($arrdimension,$measures,$filters=[],$addbundle=false)
 	{
-		return $this->aggregate($dimensionname,$measures,false);
-	} 
+		$cells= $this->filterCells($filters);
+		// writedebug($cells,'$cells---...');
+		$res=[];
+
+		foreach($cells as $i => $r)
+		{
+			// writedebug($r,'$r');
+			$cell=$this->cells[$r];
+
+			$tmprow=[];
+			$dimensionvalueset=[];
+			//put extract group by column from cell value
+			foreach($arrdimension as $di=>$dimensionname)
+			{
+				$dimensionvalueset[$dimensionname]=$cell[$dimensionname];
+				$tmprow[$dimensionname]=$this->getDimensionValue($dimensionname,$cell[$dimensionname]);
+			}
 
 
+			
+			$existsInRowNum=$this->dimensionsExistsInWhichRow($res,$tmprow);
+			$factrow=$this->facts[$cell['fact_id']];
+
+			//exists, update existing row
+			if($existsInRowNum>=0)
+			{
+				$lastrecord=$res[$existsInRowNum];
+
+				foreach($measures as $mi => $mobj)
+				{
+
+					if(gettype($mobj)!='array') //no submit agg type, default as sum
+					{						
+						$mobj=['field'=>$mobj,'agg'=>'sum'];
+					}
+					$field=$mobj['field'];
+					
+					if(isset($mobj['agg'])) //run build in aggregation
+					{
+						$val='';
+
+						switch($mobj['agg'])
+						{
+							case 'sum':
+								$val=$factrow[$field]+$lastrecord[$field.'_sum'];
+								break;
+							case 'max':
+								if($factrow[$field]<=$lastrecord[$field.'_max'])
+								{
+									$val=$lastrecord[$field.'_max'];
+								}
+								else
+								{
+									$val=$factrow[$field];
+								}								
+								break;
+							case 'min':
+								if($factrow[$field]>=$lastrecord[$field.'_min'])
+								{
+									$val=$lastrecord[$field.'_min'];
+								}
+								else
+								{
+									$val=$factrow[$field];
+								}	
+								break;
+							case 'avg':
+								//$tmprow['aggregate_rowcount']=$lastrecord['aggregate_rowcount']+1;
+								$val=$factrow[$field] / $tmprow['aggregate_rowcount'] ;
+								break;
+							break;													
+							case 'count':
+								$lastrecord[$field.'_count']++;
+							break;							
+						}
+						$tmprow[$mobj['field'].'_'.$mobj['agg']]=$val;
+					}
+					else
+					{						
+						$callback=$mobj['callback'];
+						$tmprow[$mobj['field']]=call_user_func($callback,$factrow,$tmprow[$mobj['field']]);	
+					}
+				}
+
+				$res[$existsInRowNum]=$tmprow;
+			}
+			else //not exists, assign new row
+			{				
+
+				foreach($measures as $mi => $mobj)
+				{
+					if(gettype($mobj)!='array') //no submit agg type, default as sum
+					{						
+						$mobj=['field'=>$mobj,'agg'=>'sum'];
+					}
+
+					
+					if(isset($mobj['agg'])) //run build in aggregation
+					{
+						$val='';
+						switch($mobj['agg'])
+						{
+							case 'sum':
+							case 'max':
+							case 'min':							
+								$val=$factrow[$mobj['field']];
+							break;													
+							case 'avg':
+								$val=$factrow[$mobj['field']];
+								// $tmprow['aggregate_rowcount']=1;
+							break;
+							case 'count':
+								$val=1;
+							break;							
+						}
+						$tmprow[$mobj['field'].'_'.$mobj['agg']]=$val;
+
+						
+					}
+					else
+					{						
+						$callback=$mobj['callback'];
+						$tmprow[$mobj['field']]=call_user_func($callback,$factrow,$tmprow[$mobj['field']]);	
+					}
+
+				}
+				
+				// writedebug($tmprow,'$tmprow');
+				array_push($res,$tmprow);
+			}			
+		}						
+
+
+		//convert dimension dim_id become value
+		// writedebug($res,'res');
+		return $res;
+	}
+
+	
 	 /**
        * 
        * this function will summarise single dimension data according measures
@@ -495,151 +609,120 @@ class Cube
        *      return result will assign to field 'profit'.
        * @return mix
        */
-	public function aggregate($dimensionname,$measures,$filters=[],$addbundle=false)
+	public function aggregate($dimensionname,$measures,$filters=[])
 	{
+		$arrdimension=[];
+		array_push($arrdimension,$dimensionname);
+		$res =$this->aggregateByMultiDimension($arrdimension,$measures,$filters);
 
-		// writedebug('','aggregate');
-		$tmp_arr=[];		
+		// writedebug($res,'res');
+		return $res;			
+	}
+
+
+	/**
+	 *
+	 * this function will drilldown 1 or more level, perform aggregate on $measure, group by next level of hierarchy field
+	 * @param string from dimensionname or hierarchy field, roll up from this field
+	 * @param array $measures
+	 * @return array $aggregatedresult
+	 */
+
+	public function drillDown($dimensionname,$measures,$filters,$level=1)
+	{		
+		$nextdimensionname=$this->getNextLevelName($dimensionname,'drilldown','',$level);
+		return $this->aggregate($nextdimensionname,$measures,$filters);
+	}
+
+
+
+	 /**
+        * 
+        * this is function will roll up 1 or more level,  perform aggregate on $measures, group by next level of hierarchy field.
+        * @param string from dimensionname or hierarchy field, roll up from this field
+        * @param array $measures ['sales', ['field'=>'cost','agg'=>'sum'], ['field'=>'profit','callback'=>'callprofit']]
+    	* @return array $aggregatedresult
+        */
+	public function rollUp($dimensionname,$measures,$filters,$level=1)
+	{
 		
-		if($this->getDimensionSetting($dimensionname))
+		$nextdimensionname=$this->getNextLevelName($dimensionname,'rollup','',$level);		
+		return $this->aggregate($nextdimensionname,$measures,$filters);
+	} 
+
+/**
+	  * this function use to identify drill up/drill down to which field name
+	  * @param string $columnname column name in part of hierarchy
+	  * @param string $hierarchyname=''  empty will use first hierarchy
+	  * @param int $offsetlevel, switch how many level, 1 = roll up to upper level (state => country), -1 drill down to lower level (state => city)
+	  * @return string $basedimensionname
+	  */
+	public function getNextLevelName($column,$type='',$hierarchyname='',$level=1)
+	{
+		
+		$basedimension=$this->getBaseField($column);		
+		$hierarchy=[];
+		//get suitable hierarchy
+		if($hierarchyname!='')
 		{
-			$tmp_arr=$this->getDimensionList($dimensionname);
+			$hierarchy=$this->dimensionsetting[$basedimension]['hierarchy'];
 		}
-		$cells= $this->filterCells($filters);
-	
-		if(!$cells)
+		else
 		{
-			$this->errormsg='Error detected during filter cells, no cell return.';
-			return false;
-		}
 
-		//looping cell, transfer value into $res
-		foreach($cells as $ci =>$cobj)
-		{
-			$dim_id=$cobj[$dimensionname];
-			$fact_id=$cobj['fact_id'];
-			$row=$this->facts[$fact_id]; //fact record
-
-
-			//summarise data, before draw output
-			foreach($measures as $mi => $mobj)
-			{
-
-				if(gettype($mobj)!='array')
-				{
-					$mobj=['field'=>$mobj,'agg'=>'sum'];
-				}
-
-				if(isset($mobj['agg']))
-				{						
-					$field=$mobj['field'];
-					
-					if(!isset($tmp_arr[$dim_id][$field]['sum']))
-					{
-						$tmp_arr[$dim_id][$field]['sum']=0;
-					}
-					if(!isset($tmp_arr[$dim_id][$field]['count']))
-					{
-						$tmp_arr[$dim_id][$field]['count']=0;
-					}
-
-					$tmp_arr[$dim_id][$field]['sum']+=$row[$field];
-					$tmp_arr[$dim_id][$field]['count']++;
-
-					if(!isset($tmp_arr[$dim_id][$field]['max']) || $tmp_arr[$dim_id][$field]['max'] < $row[$field]  )
-					{
-						$tmp_arr[$dim_id][$field]['max']=$row[$field];	
-					}
-					if(!isset($tmp_arr[$dim_id][$field]['min']) || $tmp_arr[$dim_id][$field]['min'] > $row[$field]  )
-					{
-						$tmp_arr[$dim_id][$field]['min']=$row[$field];	
-					}
-					
-					$tmp_arr[$dim_id][$field]['avg']=$tmp_arr[$dim_id][$field]['sum']/$tmp_arr[$dim_id][$field]['count'];
-				}
-				else if(isset($mobj['callback']) && $mobj['callback']!='') // use custom callback function
-				{
-
-					$field=$mobj['field'];
-					$callback=$mobj['callback'];
-
-					$tmp_arr[$dim_id][$field] = call_user_func($callback,$row,$tmp_arr[$dim_id]);
-				}
-
-
-				//add bundle data when needed
-				if($addbundle)
-				{
-					$dimensionsseting=$this->getDimensionSetting($dimensionname);
-					if(isset($dimensionsseting['bundlefield']))
-					{
-						foreach($dimensionsseting['bundlefield'] as $bi => $bundlefield)
-						{
-							$tmp_arr[$dim_id][$bundlefield] = $row[$bundlefield];
-						}
-					}					
-				}
+			foreach($this->dimensionsetting[$basedimension]['hierarchy'] as $h =>$hierarchy)
+			{			
+				break;
 			}
 		}
-		
-		if(!$tmp_arr)
+
+		$hierarchycount=count($hierarchy);
+		$position=array_search($column, $hierarchy);
+
+
+
+		if($type=='drilldown')
 		{
-			return false;
-		}
-		
-		//draw proper output
-		$res=[];
-		foreach($tmp_arr as $ti => $tobj)
-		{
-			$tmp=[];
-			$tmp[$dimensionname]=$tobj['dim_value'];
-			if(isset($dimensionsseting['bundlefield']))
+			//if it is at lowest hierarchy, and it is drill down, then return same column	
+			if($column==$basedimension)
 			{
-				foreach($dimensionsseting['bundlefield'] as $bi => $bundlefield)
-				{
-					$tmp[$bundlefield]=  $tobj[$bundlefield];
-				}
+				return $column;
+			}			
+			//return base level when it found in first level
+			else if($position==0)
+			{
+				return $basedimension;				
+			}
+			else
+			{
+				$newlevel=$position-$level;
+				return $hierarchy[$newlevel];
 			}
 
 
-			foreach($measures as $mi => $mobj)
+
+		}
+		else
+		{
+
+			if($position==($hierarchycount-1) && $type=='rollup')
 			{
-				// if(!isset($tmp_arr[$ti]))
-				// {
-				// 	$tmp_arr[$ti]=[];
-				// }
-
-				// if(!isset($tmp_arr[$ti][$mobj]))
-				// {
-				// 	$tmp_arr[$ti][$mobj]=[];
-				// }				
-
-				// if(!isset($tmp_arr[$ti][$field]))
-				// {
-				// 	$tmp_arr[$ti][$field]=[];	
-				// }
-
-				if(gettype($mobj)!='array')
-				{
-					$tmp[$mobj]=$tmp_arr[$ti][$mobj]['sum'];
-				}
-				else if(isset($mobj['agg']))
-				{
-					$field=$mobj['field'];
-					$agg=$mobj['agg'];
-					$newfieldname=$field.'_'.$agg;
-					$tmp[$newfieldname]=$tmp_arr[$ti][$field][$agg];
-				}
-				else if(isset($mobj['callback']) && $mobj['callback']!='') // use custom callback function
-				{
-					$field=$mobj['field'];
-					$tmp[$field]=$tmp_arr[$ti][$field];
-				}
-
+				return $column;
 			}
-			array_push($res,$tmp);
-		}		
-		return $res;		
+			//selected column is base dimension, roll up to 1st level
+			else if($column==$basedimension)
+			{
+				$newlevel=($level-1);
+				return $hierarchy[$newlevel];
+			}
+			else
+			{				
+				$newlevel=$position+$level;
+				return $hierarchy[$newlevel];
+				
+			}
+		}
+			
 	}
 
 

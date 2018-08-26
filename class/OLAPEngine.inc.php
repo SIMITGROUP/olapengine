@@ -222,10 +222,17 @@ class OLAPEngine
 
 function writedebug($a,$title='')
 {	
+	     $bt = debug_backtrace();
+	     $caller = array_shift($bt);
+	      $callerline =$caller['line'];
+	      
+
+
+
 
 	if($title!='')
 	{
-		echo '<u>'.$title.'</u><br/>';
+		echo '<u>line:'.$callerline.','.$title.'</u><br/>';
 	}
 
 

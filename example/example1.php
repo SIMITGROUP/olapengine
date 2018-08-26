@@ -35,111 +35,86 @@ if(file_exists($olapfile))
 	{		
 		// $cube->drawCube();
 	
-		//slice cube within date range
-		writedebug('<h1>example 1: slicing</h1>');
+		// writedebug('<h1>example 1: slicing</h1>');
 		$filters= [['from'=>'2018-01-01', 'to'=>'2018-01-03']];
 		$cube_3day=$olapengine->sliceCube($cube,'date',$filters);
+		// writedebug('done');
 
-		writedebug('<h1>example 2: aggregate</h1>');
-		$dimension='s';
+
+
+
+
+		// writedebug('<h1>example 2: aggregate</h1>');
+		$dimension='code';
 		$measures=[
 			'sales',//sum sales, default is sum, return as sales
 			['field'=>'sales','agg'=>'sum'], //sum sales, return sales_sum
 			['field'=>'sales','agg'=>'count'], //sum sales, return sales_sum
 			['field'=>'profit','callback'=>'callback1'], //custom,  'profit' not exists, it will run callback to get value
 		];
-		$summary=$cube_3day->aggregate($dimension,$measures); //summary of country
-		writedebug($summary,'summary');
-
-		/* ---------------------------------*/
-		
-		//create dice cube within multiple dimension filter
-		$dicecomponent=[
-				'date'=>[['from'=>'2018-01-01','to'=>'2018-12-31']],		
-				'city'=>['KL','JB'],
+		$filtercomponent=[
+				'date'=>['2018-01-03',['from'=>'2018-01-01','to'=>'2018-01-02']],				
 		];
-		$cube_item_city=$olapengine->diceCube($cube,$dicecomponent);
-		// writedebug($cube_item_city);
+		$summary=$cube->aggregate($dimension,$measures,$filtercomponent); //summary of country
+		// writedebug($summary,'summary');
+
+	
+		
+		// writedebug('<h1>example 3: dice and summarise</h1>');
+		$dimension='city';
+		$dicecomponent=[
+				'date'=>[['from'=>'2017-01-01','to'=>'2018-12-31']],		
+		];		
+		
+		$cubedatecity=$olapengine->diceCube($cube,$dicecomponent);
+		$summarydatecity=$cubedatecity->aggregate($dimension,['sales']); //summary of country
+		// writedebug($summarydatecity,'summarydatecity');
 		
 
-
-		//get brz table with filter within specific original cube, record return
+		// writedebug('<h1>example 4: get raw data from getsubfacts</h1>');
 		$filtercomponent=[
 				'date'=>['2018-01-03',['from'=>'2018-01-01','to'=>'2018-01-02']],				
 				'city'=>['JB','KL','TAMPINESS'],
 
 		];
-		$getfilterfact=$cube->getSubFacts($filtercomponent);
-		// writedebug($getfilterfact,'getfilterfact');
+		$getsubfacts=$cube->getSubFacts($filtercomponent);
+		// writedebug($getsubfacts,'getsubfacts');
 
 
-		//get brz table with filter within KL/JB cube, no data return
-		// $filtercomponent=[
-		// 		'date'=>[['from'=>'2018-01-01','to'=>'2018-12-31']],				
-		// 		'city'=>['BRZ'],
-		// ];
-		// $getfilterfact=$cube_item_city->getSubFacts($filtercomponent);
-//		writedebug($getfilterfact,'getfilterfact');
+		// writedebug('<h1>example 5: aggregate record with multiple filter and group by </h1>');
+		$arrdimension=['code','city'];
+		$filtercomponent=[
+				'date'=>[['from'=>'2017-01-01','to'=>'2019-12-31']],				
 
-
+		];
+		$measures=[
+			'sales',//sum sales, default is sum, return as sales
+			['field'=>'sales','agg'=>'sum'], //sum sales, return sales_sum
+			['field'=>'sales','agg'=>'avg'], //sum sales, return sales_sum
+			['field'=>'cost','agg'=>'sum'], //sum sales, return sales_sum
+			['field'=>'profit','callback'=>'callback1'], //custom,  'profit' not exists, it will run callback to get value
+		];
+		// $summary_agggroupby=$cube->aggregateByMultiDimension($arrdimension,$measures,$filtercomponent);
+		// writedebug($summary_agggroupby,'$summary_agggroupby');
+		
 		$dimension='country';
 		$measures=[
 			'sales',//sum sales, default is sum, return as sales
 			['field'=>'sales','agg'=>'sum'], //sum sales, return sales_sum
-			['field'=>'sales','agg'=>'count'], //sum sales, return sales_sum
+			['field'=>'sales','agg'=>'avg'], //sum sales, return sales_sum
+			['field'=>'cost','agg'=>'sum'], //sum sales, return sales_sum
 			['field'=>'profit','callback'=>'callback1'], //custom,  'profit' not exists, it will run callback to get value
 		];
-		$summary=$cube->aggregate($dimension,$measures); //summary of country
-		// writedebug($summary);
-		// $summaryofcity=$cube->drillDown($dimension,[],$measures); //drill down 1 level, group data by city
-		// $summaryofcountry=$cube->rollUp($dimension,[],$measures); //rollup down 1 level, present same data as region
-
+		$filtercomponent=[
+				'date'=>[['from'=>'2017-01-01','to'=>'2019-12-31']],
+		];
+		// $summarydrilldown=$cube->drillDown($dimension,$measures,$filtercomponent);
+		// writedebug($summarydrilldown,'$summarydrilldown');
 		
+		// $summaryrollup=$cube->rollUp($dimension,$measures,$filtercomponent);
+		// writedebug($summaryrollup,'$summaryrollup');
 
 
-//////*********************
-		//$summary=$cube->rollUp('city',['sales','cost']);
-		
-
-		// $smallercube=$cube->slice('country',['MY','SG']);
-		// $smallercube->rollUp('region',['sales','cost']);
-
-
-		// $countryresult=$cube->drillDown('country',['MY','SG'],['sales','cost']); //drill down to city 
-		
-
-//////*********************
-
-
-
-
-		// $filters= ['from'=>'2018-01-01', 'to'=>'2018-01-31'];		
-		// $drilldowncube=$olapengine->sliceCube($cube,'date',$filters);
-		
-
-
-		// $summarydrilltocountry=$cube->drillDown($dimension,$filter,$measures);
-
-		// $dimension='country';					
-		// // $drilldowncube=$cube->drillDown($dimension,$filter);
-		// $debugger=1;
-		// $rollresult=$cube->rollUp($dimension,$measures);  
-
-		// if(!$rollresult)
-		// {
-		// 	echo $cube->getError();
-		// }
-
-		//it will auto go to next level which is country
-		// $drilldowncube=$cube->drillDown(,);  //it will auto go to next level which is country
-
-
-
-//		let markMembers = cube.drillUpMembers('product', productMembers, 'mark')
-
-		
-		
-		
 	}
 }
 else
@@ -151,5 +126,5 @@ else
 
 function callback1($row,$broughforward)
 {
-	return $broughforward['sales']['sum']-$broughforward['cost']['sum'] ;
+	return $row['sales']-$row['cost'];
 }
