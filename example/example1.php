@@ -37,7 +37,7 @@ if(file_exists($olapfile))
 	
 		// writedebug('<h1>example 1: slicing</h1>');
 		$filters= [['from'=>'2018-01-01', 'to'=>'2018-01-03']];
-		$cube_3day=$olapengine->sliceCube($cube,'date',$filters);
+		// $cube_3day=$olapengine->sliceCube($cube,'date',$filters);
 		// writedebug('done');
 
 
@@ -53,31 +53,62 @@ if(file_exists($olapfile))
 			['field'=>'profit','callback'=>'callback1'], //custom,  'profit' not exists, it will run callback to get value
 		];
 		$filtercomponent=[
-				'date'=>['2018-01-03',['from'=>'2018-01-01','to'=>'2018-01-02']],				
+				'date'=>[['from'=>'2018-01-01','to'=>'2018-01-01']],
 		];
-		$summary=$cube->aggregate($dimension,$measures,$filtercomponent); //summary of country
+		// $summary=$cube_3day->aggregate($dimension,$measures,$filtercomponent); //summary of country
 		// writedebug($summary,'summary');
 
 	
 		
 		// writedebug('<h1>example 3: dice and summarise</h1>');
-		$dimension='city';
+		$dimension='country';
 		$dicecomponent=[
-				'date'=>[['from'=>'2017-01-01','to'=>'2018-12-31']],		
+				// 'date'=>[['from'=>'2018-01-01','to'=>'2018-11-10']],
+				// 'city'=>['*'],
+			// 'country'=>['SG'],
 		];		
-		
+		// writedebug($dicecomponent,'dicecomponent');
+
+		// $cube->drawCube();
 		$cubedatecity=$olapengine->diceCube($cube,$dicecomponent);
-		$summarydatecity=$cubedatecity->aggregate($dimension,['sales']); //summary of country
-		// writedebug($summarydatecity,'summarydatecity');
+
+
+		$summary=$cube->aggregate($dimension,$measures,$dicecomponent);
+		writedebug($summary,'summary');
+
+
+		if($cubedatecity)
+		{
+			// $summarydatecity=$cube->aggregate($dimension,$measures,$filtercomponent); //summary of country	
+			// writedebug($summarydatecity,'summarydatecity with filter');
+			// $summary=$cubedatecity->aggregate($dimension,$measures);
+			// writedebug($summary,'summary');
+			
+			// $summarydatecity=$cubedatecity->aggregate($dimension,$measures); //summary of country	
+			// writedebug($summarydatecity,'summarydatecity no filter');
+
+			// $summarydatecity=$cubedatecity->getSubFacts();
+			// writedebug($summarydatecity,'cubedatecity');
+			// $summarydatecity=$cube->getSubFacts($dicecomponent);
+			
+			
+		}
+		else
+		{
+			// writedebug('cannot dice cube');	
+		}
+
+		
+		
 		
 
 		// writedebug('<h1>example 4: get raw data from getsubfacts</h1>');
 		$filtercomponent=[
 				'date'=>['2018-01-03',['from'=>'2018-01-01','to'=>'2018-01-02']],				
-				'city'=>['JB','KL','TAMPINESS'],
+				// 'city'=>['JB'],
 
 		];
-		$getsubfacts=$cube->getSubFacts($filtercomponent);
+		// $getsubfacts=$cube->getSubFacts($filtercomponent);
 		// writedebug($getsubfacts,'getsubfacts');
 
 

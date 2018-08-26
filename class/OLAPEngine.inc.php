@@ -45,11 +45,11 @@ class OLAPEngine
        * @param array $dimensions [['field'=>'agent','type'=>'string'],[...]]
        * @return object cube object
        */
-	public function createCube(&$facts,$dimensions,$computedimension=true)
+	public function createCube(&$facts,$dimensions)
 	{
 		$cube = new Cube();
 
-		if(count($dimensions)==0 || count($facts)==0)
+		if(count($dimensions)==0 )
 		{
 			return false;
 		}
@@ -57,7 +57,7 @@ class OLAPEngine
 		{			
 			$cube->setVersion($this->version);
 			$cube->setFacts($facts);
-			$cube->setDimensionSetting($dimensions,$computedimension);
+			$cube->setDimensionSetting($dimensions);
 			
 			
 			
@@ -209,13 +209,22 @@ class OLAPEngine
 		$cubecomponent=[];
 		$cubecomponent[$dimensionname]=$filters;
 		$subfacts=$cube->getSubFacts($cubecomponent);		
-		return $this->createCube($subfacts,$cube->getDimensionSetting(),false);
+		$dimension=$cube->getOrigimalDimensionSetting();
+		return $this->createCube($subfacts,$dimension);
 	}
 
 	public function diceCube(&$cube,$cubecomponent)
 	{
+		// writedebug($cubecomponent,'cubecomponent');
 		$subfacts=$cube->getSubFacts($cubecomponent);
-		return $this->createCube($subfacts,$cube->getDimensionSetting(),false);
+		// writedebug($subfacts,'subfacts');
+		$dimension=$cube->getOrigimalDimensionSetting();
+		// writedebug($dimension);
+		
+		// writedebug($cube->getDimensionSetting(),'$cube->getDimensionSetting()');
+		$cube=$this->createCube($subfacts,$dimension);
+		// writedebug($cube,'cube');
+		return $cube;
 	}
 }
 

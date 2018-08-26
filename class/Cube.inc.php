@@ -108,11 +108,10 @@ class Cube
 	  * @param array dimension setting
 	  *
 	  */
-	public function setDimensionSetting($dimensionsetting,$compute=true)
+	public function setDimensionSetting($dimensionsetting)
 	{		
+		$this->originaldimensionsetting=$dimensionsetting;
 		
-		if($compute)
-		{
 			$this->dimensionsetting=[];	
 			foreach($dimensionsetting as $d => $dobj)
 			{
@@ -144,11 +143,11 @@ class Cube
 				}
 			}
 			//$this->dimensionsetting;//=$dimensionsetting;
-		}
-		else
-		{
-			$this->dimensionsetting=$dimensionsetting;
-		}
+		// }
+		// else
+		// {
+		// 	$this->dimensionsetting=$dimensionsetting;
+		// }
 		
 		// $this->setOthersField();
 	}
@@ -203,6 +202,20 @@ class Cube
 			}	
 			$this->othersField=$othersfield;
 	}
+
+
+
+/**
+	  * get distinct dimension setting from this cube	  
+	  * @param string dimensionname, get setting from the dimension name, leave empty to get all dimension
+	  * @return array dimension setting
+	  */
+
+	public function getOrigimalDimensionSetting()
+	{
+		return $this->originaldimensionsetting;
+	}
+
 
 
 	/**
@@ -262,12 +275,26 @@ class Cube
 		//no filter will return all, skip looping. is string consider error
 		if(!isset($cubecomponent) || $cubecomponent==''  || gettype($cubecomponent)=='string')
 		{
-			$this->errormsg='You shall filter Cells with array.';
+
+
+			$this->errormsg='You shall filter Cells with array.';			
+
 			return false;
 		}
+
 		if(count($cubecomponent)==0)
-		{
-			return $this->cells;
+		{	
+			$tmpcell=[];
+			foreach($this->cells as $index => $cell)
+			{
+				
+					// writedebug('<b style="color:green">inserted</b>');
+					array_push($tmpcell,$cell['fact_id']);
+				
+			}
+
+
+			return $tmpcell;
 		}
 
 		//filter each dimension
@@ -275,12 +302,14 @@ class Cube
 		// writedebug($cubecomponent,'cubecomponent');
 		foreach($cubecomponent as $dimensionname => $filters)
 		{		
+
 			$tmpcell=[];
 			$filteredresult=[];
-			// writedebug($tmpcell,'begin tmpcell of '.$dimensionname);
+			// writedebug($dimensionname,'begin loop');
 			//make variable shorter
-			$dimlist=&$this->dimensionlist[$dimensionname];
-
+			// writedebug($this->getDimensionList(),'getDimensionList');
+			$dimlist=$this->getDimensionList($dimensionname);
+			// writedebug($dimlist,'dimlist');
 			foreach($dimlist as $i => $v)
 			{
 				$id=$v['dim_id'];
@@ -289,21 +318,21 @@ class Cube
 
 				
 				$res=$this->evaluateFilter($dimensionname,$value,$filters);
+				// writedebug($v,'v');
 
-				// writedebug($dimensionname. ',dim_id='.$id .'. value='.$value.', filter='.print_r($filters,true) .'"'.$res.'"');
 				if($res)
-				{
-					// writedebug('append dim_id='.$v['dim_id']);
-					array_push($filteredresult,$v['dim_id']);
-				}			
-
+				{					
+					array_push($filteredresult,$v['dim_id']);				
+				}
 			}
-
+			// writedebug($filteredresult,'filteredresult');
 			// writedebug($filteredresult,'filteredresult');
 			//find out which cell is suitable from filtered result
 			// writedebug($this->cells);
 			foreach($this->cells as $index => $cell)
 			{
+				// writedebug($cell,'cell');
+				// writedebug($filteredresult,'filteredresult');
 				if(in_array($cell[$dimensionname],$filteredresult))
 				{
 					// writedebug('<b style="color:green">inserted</b>');
@@ -322,7 +351,7 @@ class Cube
 				$subfactscell=array_intersect($subfactscell,$tmpcell);
 			}
 			
-			// writedebug($subfactscell,'subfactscell');
+			// writedebug($tmpcell,'tmpcell');
 
 			$dimensioncount++;
 		}		
@@ -340,14 +369,16 @@ class Cube
        * @param array $cubecomponent ['date'=>['2018-01-01',..], 'city'=>['KL',..],.. ]
        * @return array cells 
        */
-	public function getSubFacts($cubecomponent)
+	public function getSubFacts($cubecomponent=[])
 	{		
-		// writedebug('','getSubFacts');
+		
 		if(count($cubecomponent)==0 )
 		{
 			return $this->facts;
 		}
+
 		$cells=$this->filterCells($cubecomponent);
+
 		$subfacts=[];
 		
 		foreach($cells as $i =>$fact_id)
