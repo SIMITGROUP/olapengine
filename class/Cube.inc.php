@@ -5,16 +5,26 @@ class Cube
 {
 	public $version;
 	private $dimensionsetting;
-	private $othersField;
+	
 	private $dimensionlist;
-	private $facts;
-	private $cells=[];
+	
+	private $cells = null;
 	private $errormsg;
+	private $othersField;
+	private $originaldimensionsetting;
 	public function __construct()
 	{
 
 	}
 
+
+	/**
+	*
+	*/
+	public function defineCellSize($count)
+	{
+		$this->cells = new SplFixedArray($count);
+	}
 
 	/**
      * 
@@ -84,23 +94,21 @@ class Cube
 		
 	}
 
-  /**
-	* define facts into current cube
-	* @param array long facts, use reference to reduce memory usage
-	*/
-	public function setFacts(&$facts)
-	{
-		$this->facts=$facts;	
-	}
-
-  /**
-	* get facts from current cube
-	* @return return facts in this cube
-	*/
-	public function getFacts()
-	{
-		return $this->facts;
-	}
+   /**
+  	* get all fields from cube, included dimension, measures and others field 
+  	* @return array $fieldlist
+  	*/
+  public function getAllFields()
+  {
+  	$fields=$this->originaldimensionsetting;
+  	foreach($this->othersField as $f=>$fobj)
+  	{
+  		$fields[$f]=$fobj;
+  	}
+  	return $fields;
+	
+  }
+ 
 
 
 	/**
@@ -149,7 +157,7 @@ class Cube
 		// 	$this->dimensionsetting=$dimensionsetting;
 		// }
 		
-		// $this->setOthersField();
+		
 	}
 
 
@@ -159,10 +167,10 @@ class Cube
 	 * the info define here can be use for capture drill down info and etc.
 	 *	 
 	 */
-	private function setOthersField()
+	private function setOthersField($row)
 	{
 			$othersfield=[];
-			foreach($this->facts[0] as $field => $value)
+			foreach($row as $field => $value)
 			{
 				$tmp=[];		
 
@@ -255,7 +263,96 @@ class Cube
 	}
 
 
+	public function optimizeMemory()
+	{
+		foreach($this->originaldimensionsetting as $fieldname => $dim_obj)
+		{
+				$arrcount=count($this->dimensionlist[$fieldname]);
+				$tmparr=new SplFixedArray($arrcount);
+				foreach($this->dimensionlist[$fieldname] as $i => $o)
+				{
+					$tmparr[$i]=$o;
+				}
+				unset($this->dimensionlist[$fieldname]);
+				$this->dimensionlist[$fieldname]=$tmparr;
+		}
+		echo "after optimized dimenssion array, memory ".convertMemory(memory_get_usage())."\n";				
 
+	}
+	/**
+	 * add row to cube, it will auto add cell, create suitable dimension
+	 * @param array &$row 
+	 * @return book success or failed
+	 *
+	 */
+
+	public function addRow($num,$row)
+	{
+		$cell=['fact_id'=>$num];	
+		//only run at first row to create others field
+		if($num==0)
+		{
+			$this->setOthersField($row);	
+		}
+		
+
+		foreach($this->originaldimensionsetting as $fieldname => $dim_obj)
+		{
+			// print_r($row);
+			$dimensionvalue=$row[$fieldname];
+			if(!isset($this->dimensionlist[$fieldname]))
+			{
+				$this->dimensionlist[$fieldname]=[];
+			}
+			
+			$dimid_res=$this->getDimensionID($dimensionvalue,$this->dimensionlist[$fieldname]);
+			$dim_id=$dimid_res['dim_id'];
+			if($dim_id==-1)
+			{	
+				//get new dimension key
+				$dim_id=$dimid_res['max_no']+1; //count($this->dimensionlist[$fieldname]);				
+				$obj=['dim_id'=>$dim_id, 'dim_value'=>$dimensionvalue];
+
+				array_push($this->dimensionlist[$fieldname],$obj);
+			}
+			$cell[$fieldname]=$dim_id;
+		}
+
+		foreach($this->othersField as $fieldname=>$othersobj)
+		{
+			$cell[$fieldname]=$row[$fieldname];
+		}
+		$this->cells[$num]=$cell;
+		// echo "added cell $num of ".$this->cells->getSize()."\n";
+		// $this->cells[]=$row;
+		// $cube->addCell($res['cell']);
+	}
+
+
+	private function getDimensionID($search,$array)
+	{
+		$a=0;
+		foreach($array as $a => $o)
+		{
+			if($search==$o['dim_value'])
+			{
+				return array('dim_id'=>$o['dim_id']);
+			}
+
+		}
+		return array('dim_id'=>-1,'max_no'=>$a);
+	}
+
+
+	public function setDataset($dataset_id='')
+	{
+		$this->dataset_id=$dataset_id;
+	}
+
+	public function getDataset()
+	{
+			return $this->dataset_id;
+	}
 
 	/**
        * 
@@ -372,18 +469,21 @@ class Cube
 	public function getSubFacts($cubecomponent=[])
 	{		
 		
-		if(count($cubecomponent)==0 )
-		{
-			return $this->facts;
-		}
+	
 
 		$cells=$this->filterCells($cubecomponent);
 
 		$subfacts=[];
 		
-		foreach($cells as $i =>$fact_id)
+		foreach($cells as $i =>$cell_id)
 		{
-			array_push($subfacts,$this->facts[$fact_id]);
+			$tmpcell=$this->cells[$cell_id];
+			foreach($this->originaldimensionsetting as $dimensionname=>$dimensionobj)
+			{
+				$dim_id=$tmpcell[$dimensionname];
+				$tmpcell[$dimensionname]=$this->dimensionlist[$dimensionname][$dim_id]['dim_value'];
+			}
+			array_push($subfacts,$tmpcell);
 		}
 		return $subfacts;	
 	}
@@ -489,6 +589,7 @@ class Cube
 	{
 		$cells= $this->filterCells($filters);
 		// writedebug($cells,'$cells---...');
+		// print_r($cells);
 		$res=[];
 
 		foreach($cells as $i => $r)
@@ -499,16 +600,21 @@ class Cube
 			$tmprow=[];
 			$dimensionvalueset=[];
 			//put extract group by column from cell value
-			foreach($arrdimension as $di=>$dimensionname)
+
+			if(isset($arrdimension) && count($arrdimension)>0)
+			{
+				foreach($arrdimension as $di=>$dimensionname)
 			{
 				$dimensionvalueset[$dimensionname]=$cell[$dimensionname];
 				$tmprow[$dimensionname]=$this->getDimensionValue($dimensionname,$cell[$dimensionname]);
+			}	
 			}
+			
 
 
 			
 			$existsInRowNum=$this->dimensionsExistsInWhichRow($res,$tmprow);
-			$factrow=$this->facts[$cell['fact_id']];
+			$factrow=$this->cells[$cell['fact_id']];
 
 			//exists, update existing row
 			if($existsInRowNum>=0)

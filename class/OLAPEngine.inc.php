@@ -23,6 +23,10 @@ class OLAPEngine
 
 	}
 
+	public function getVersion()
+	{
+		return $this->version;	
+	}
 	/**
      * 
      * return error msg 
@@ -45,7 +49,7 @@ class OLAPEngine
        * @param array $dimensions [['field'=>'agent','type'=>'string'],[...]]
        * @return object cube object
        */
-	public function createCube(&$facts,$dimensions)
+	public function createCube($dimensions,$rowcount)
 	{
 		$cube = new Cube();
 
@@ -55,33 +59,16 @@ class OLAPEngine
 		}
 		else
 		{			
-			$cube->setVersion($this->version);
-			$cube->setFacts($facts);
-			$cube->setDimensionSetting($dimensions);
-			
-			
-			
+			$cube->setVersion($this->version);			
+			$cube->setDimensionSetting($dimensions);						
 			$dimensiondata=$this->generateDistinctDimensionSchema($cube);			
-			
-			foreach($facts as $i => $row)
-			{				
-				$res=$this->prepareDimensionMasterList($dimensiondata,$i,$row);
-				if(!$res)
-				{
-					return false;
-				}
-			
-				$dimensiondata=$res['data'];
-				$cube->addCell($res['cell']);
-				
-			}
 			$cube->setDimensionList($dimensiondata);
-				// writedebug($dimensiondata,'setDimensionList');
-				// writedebug($cube->getDimensionList(),'getDimensionList at createcube');
+			$cube->defineCellSize($rowcount);
 		}		
 		return $cube;
 		
 	}
+
 
 	 /**
        * 
@@ -226,7 +213,56 @@ class OLAPEngine
 		// writedebug($cube,'cube');
 		return $cube;
 	}
+
+
+
+	public function exportCube(&$cube,$filename)
+	{
+		$foldername=dirname($filename);
+		if(file_exists($foldername) && is_writable($foldername))
+		{
+			$cubedata=serialize($cube);					
+			$fp = fopen($filename, "w"); 
+			fwrite($fp, $cubedata); 
+			fclose($fp);
+			return true;
+		}
+		else
+		{
+			$this->errormsg=sprintf('Folder %s is not exists or not writable.',$foldername);
+			return false;
+			
+		}
+		
+	}
+
+
+	public function importCube($filename)
+	{
+		
+		if(file_exists($filename) )
+		{
+			$objData = file_get_contents($filename);
+			$tmpcube = unserialize($objData);    
+			unset($objData);
+			return $tmpcube;
+				
+
+		}
+		else
+		{
+			$this->errormsg=sprintf('%s is not exists for import.',$filename);
+			return false;
+			
+		}
+		
+	}
+
+
+
 }
+
+
 
 
 function writedebug($a,$title='')
