@@ -7,7 +7,7 @@ class Cube
 	private $dimensionsetting;
 	
 	private $dimensionlist;
-	
+	private $sorts;
 	private $cells = null;
 	private $errormsg;
 	private $othersField;
@@ -167,47 +167,49 @@ class Cube
 	 * the info define here can be use for capture drill down info and etc.
 	 *	 
 	 */
-	private function setOthersField($row)
+	public function setOthersField($othersfield)
 	{
-			$othersfield=[];
-			foreach($row as $field => $value)
-			{
-				$tmp=[];		
+			// $othersfield=[];
+			// foreach($row as $field => $value)
+			// {
+			// 	$tmp=[];		
 
-				//predefine dimension				
-				if( isset($this->dimensionsetting[$field])  &&  count($this->dimensionsetting[$field]) >0)
-				{				
-					;
-				}
-				else //others fields include bundles, hierarchy field, measures and etc
-				{
-					$type=gettype($value);				
-					if($type=='string' && $this->isDate($value))
-					{
-						$type='date';
-					}
-						$tmp['type']=$type;
+			// 	//predefine dimension				
+			// 	if( isset($this->dimensionsetting[$field])  &&  count($this->dimensionsetting[$field]) >0)
+			// 	{				
+			// 		;
+			// 	}
+			// 	else //others fields include bundles, hierarchy field, measures and etc
+			// 	{
+			// 		$type=gettype($value);	
 
-						//loop and check was defined as hierarchy field? then define hierarchy base column name, that for drill purpose only
-						foreach($this->dimensionsetting as $d => $dobj)
-						{							
+			// 		echo $field.':'.$value. ',type='.$type."\n";			
+			// 		if($type=='string' && $this->isDate($value))
+			// 		{
+			// 			$type='date';
+			// 		}
+			// 			$tmp['type']=$type;
 
-							//idenfied is part of bundle field?
-							if(isset($dobj['bundlefield']) && count($dobj['bundlefield'])>0)
-							{
-								//loop bundle column, tag it link to which base column
-								foreach($dobj['bundlefield'] as $bi => $bundlefield)
-								{
-									if($bundlefield==$field)
-									{
-										$tmp['basecolumn']=$d;	
-									}									
-								}	
-							}							
-						}
-				$othersfield[$field]=$tmp;
-				}			
-			}	
+			// 			//loop and check was defined as hierarchy field? then define hierarchy base column name, that for drill purpose only
+			// 			foreach($this->dimensionsetting as $d => $dobj)
+			// 			{							
+
+			// 				//idenfied is part of bundle field?
+			// 				if(isset($dobj['bundlefield']) && count($dobj['bundlefield'])>0)
+			// 				{
+			// 					//loop bundle column, tag it link to which base column
+			// 					foreach($dobj['bundlefield'] as $bi => $bundlefield)
+			// 					{
+			// 						if($bundlefield==$field)
+			// 						{
+			// 							$tmp['basecolumn']=$d;	
+			// 						}									
+			// 					}	
+			// 				}							
+			// 			}
+			// 	$othersfield[$field]=$tmp;
+			// 	}			
+			// }	
 			$this->othersField=$othersfield;
 	}
 
@@ -276,7 +278,7 @@ class Cube
 				unset($this->dimensionlist[$fieldname]);
 				$this->dimensionlist[$fieldname]=$tmparr;
 		}
-		echo "after optimized dimenssion array, memory ".convertMemory(memory_get_usage())."\n";				
+		
 
 	}
 	/**
@@ -290,10 +292,9 @@ class Cube
 	{
 		$cell=['fact_id'=>$num];	
 		//only run at first row to create others field
-		if($num==0)
-		{
-			$this->setOthersField($row);	
-		}
+		
+		
+		
 		
 
 		foreach($this->originaldimensionsetting as $fieldname => $dim_obj)
@@ -585,7 +586,7 @@ class Cube
 	}
 
 
-	public function aggregateByMultiDimension($arrdimension,$measures,$filters=[],$addbundle=false)
+	public function aggregateByMultiDimension($arrdimension,$measures,$filters=[],$sorts=[],$addbundle=false)
 	{
 		$cells= $this->filterCells($filters);
 		// writedebug($cells,'$cells---...');
@@ -728,6 +729,13 @@ class Cube
 
 		//convert dimension dim_id become value
 		// writedebug($res,'res');
+		$this->sorts=$sorts;
+
+		if(count($sorts)>0)
+		{
+			usort($res,array($this,'compareObjectValue'));	
+		}
+		
 		return $res;
 	}
 
@@ -746,11 +754,11 @@ class Cube
        *      return result will assign to field 'profit'.
        * @return mix
        */
-	public function aggregate($dimensionname,$measures,$filters=[])
+	public function aggregate($dimensionname,$measures,$filters=[],$sorts=[])
 	{
 		$arrdimension=[];
 		array_push($arrdimension,$dimensionname);
-		$res =$this->aggregateByMultiDimension($arrdimension,$measures,$filters);
+		$res =$this->aggregateByMultiDimension($arrdimension,$measures,$filters,$sorts);
 
 		// writedebug($res,'res');
 		return $res;			
@@ -765,7 +773,7 @@ class Cube
 	 * @return array $aggregatedresult
 	 */
 
-	public function drillDown($dimensionname,$measures,$filters,$level=1)
+	public function drillDown($dimensionname,$measures,$filters,$sorts=[],$level=1)
 	{		
 		$nextdimensionname=$this->getNextLevelName($dimensionname,'drilldown','',$level);
 		return $this->aggregate($nextdimensionname,$measures,$filters);
@@ -780,7 +788,7 @@ class Cube
         * @param array $measures ['sales', ['field'=>'cost','agg'=>'sum'], ['field'=>'profit','callback'=>'callprofit']]
     	* @return array $aggregatedresult
         */
-	public function rollUp($dimensionname,$measures,$filters,$level=1)
+	public function rollUp($dimensionname,$measures,$filters,$sorts=[],$level=1)
 	{
 		
 		$nextdimensionname=$this->getNextLevelName($dimensionname,'rollup','',$level);		
@@ -956,4 +964,33 @@ class Cube
 	}
 
 
+	private function compareObjectValue($a, $b)
+	{
+		$r=0;
+		foreach($this->sorts as $i => $sorts)
+		{
+			foreach($sorts as $field => $sortmethod)
+			{
+
+
+
+				$fieldname=str_replace(':', '_', $field);
+				
+				if(strtolower($sortmethod)=='desc')
+				{
+					$r= -1 * strcmp( $a[$fieldname] , $b[$fieldname]);
+				}
+				else
+				{
+					$r=  strcmp($a[$fieldname] ,$b[$fieldname]);
+				}
+
+				if($r !=0 || $r!='0')
+				{
+					return $r;
+				}
+			}
+		}		
+		return 0;	    
+	}
 }
