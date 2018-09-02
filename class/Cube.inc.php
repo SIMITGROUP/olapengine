@@ -733,9 +733,11 @@ class Cube
 
 		if(count($sorts)>0)
 		{
+			echo 'sortting'."\n";
 			usort($res,array($this,'compareObjectValue'));	
 		}
 		
+		// print_r($res);
 		return $res;
 	}
 
@@ -975,15 +977,43 @@ class Cube
 
 
 				$fieldname=str_replace(':', '_', $field);
-				
-				if(strtolower($sortmethod)=='desc')
+
+				if(strpos($field, ':') !== false) 
 				{
-					$r= -1 * strcmp( $a[$fieldname] , $b[$fieldname]);
+					
+					
+						if($a[$fieldname] == $b[$fieldname])
+						{
+							$r=0;
+						}
+						else
+						{
+							if(strtolower($sortmethod)=='desc')
+							{
+								$r=-1* ($a[$fieldname] - $b[$fieldname]);
+							}
+							else
+							{
+								$r =$a[$fieldname] - $b[$fieldname];;
+							}
+							
+						}
+
 				}
 				else
 				{
-					$r=  strcmp($a[$fieldname] ,$b[$fieldname]);
+					
+					if(strtolower($sortmethod)=='desc')
+					{
+						$r= -1 * strcmp( $a[$fieldname] , $b[$fieldname]);
+					}
+					else
+					{
+						$r=  strcmp($a[$fieldname] ,$b[$fieldname]);
+					}
+
 				}
+				
 
 				if($r !=0 || $r!='0')
 				{
