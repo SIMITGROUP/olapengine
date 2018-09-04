@@ -395,52 +395,71 @@ class Cube
 			return $tmpcell;
 		}
 
-		//filter each dimension
-		$dimensioncount=0;
+		//filter each component
+		$filternumber=0;
 		// writedebug($cubecomponent,'cubecomponent');
-		foreach($cubecomponent as $dimensionname => $filters)
+		foreach($cubecomponent as $columnname => $filters)
 		{		
 
 			$tmpcell=[];
 			$filteredresult=[];
-			// writedebug($dimensionname,'begin loop');
+			$filtertype='';
 			//make variable shorter
-			// writedebug($this->getDimensionList(),'getDimensionList');
-			$dimlist=$this->getDimensionList($dimensionname);
-			// writedebug($dimlist,'dimlist');
-			foreach($dimlist as $i => $v)
+			$dimlist=$this->getDimensionList($columnname);
+
+			//filter using dimension (dimension will convert value become int)
+			if($dimlist)
 			{
-				$id=$v['dim_id'];
-				$value=$v['dim_value'];
-				//filter specific dimension with the parameter
+				$filtertype='dimension';
+				foreach($dimlist as $i => $v)
+				{
+					$id=$v['dim_id'];
+					$value=$v['dim_value'];
+					//filter specific dimension with the parameter
 
-				
-				$res=$this->evaluateFilter($dimensionname,$value,$filters);
-				// writedebug($v,'v');
+					
+					$res=$this->evaluateFilter($columnname,$value,$filters);
+					// writedebug($v,'v');
 
-				if($res)
-				{					
-					array_push($filteredresult,$v['dim_id']);				
+					if($res)
+					{					
+						array_push($filteredresult,$v['dim_id']);				
+					}
 				}
 			}
-			// writedebug($filteredresult,'filteredresult');
-			// writedebug($filteredresult,'filteredresult');
+			
+
+
 			//find out which cell is suitable from filtered result
-			// writedebug($this->cells);
 			foreach($this->cells as $index => $cell)
 			{
-				// writedebug($cell,'cell');
-				// writedebug($filteredresult,'filteredresult');
-				if(in_array($cell[$dimensionname],$filteredresult))
+
+				if($filtertype=='dimension')
 				{
-					// writedebug('<b style="color:green">inserted</b>');
-					array_push($tmpcell,$cell['fact_id']);
+					if(in_array($cell[$columnname],$filteredresult))
+					{						
+						array_push($tmpcell,$cell['fact_id']);
+					}
+
 				}
+				else //filter type = measures or others
+				{
+										//		totalsales   totalsalesvalue     [{....}]
+											echo "filter as $columnname: value = ".$cell[$columnname].", filter =".
+											print_r($filters,true)."\n";
+					$res=$this->evaluateFilter($columnname,$cell[$columnname],$filters);
+					if($res)
+					{
+						array_push($tmpcell,$cell['fact_id']);
+					}
+					
+				}
+				
+
 			}
 			
 			
-			// writedebug($tmpcell,'<br/>end tmpcell');
-			if($dimensioncount==0)
+			if($filternumber==0)
 			{
 				$subfactscell=$tmpcell;
 			}
@@ -449,9 +468,8 @@ class Cube
 				$subfactscell=array_intersect($subfactscell,$tmpcell);
 			}
 			
-			// writedebug($tmpcell,'tmpcell');
 
-			$dimensioncount++;
+			$filternumber++;
 		}		
 		
 
@@ -733,7 +751,7 @@ class Cube
 
 		if(count($sorts)>0)
 		{
-			echo 'sortting'."\n";
+			
 			usort($res,array($this,'compareObjectValue'));	
 		}
 		
