@@ -16,21 +16,26 @@ ini_set('opcache.enable', 0);
 
 
 */
-$olapfile=__DIR__."/../class/OLAPEngine.inc.php";
+$olapfile="../OLAPEngine.inc.php";
 include 'examplearray.php';
 $facts=$data;
 $dimensions=[
-	'city'=>['type'=>'string','hierarchy'=>['default' => ['country','region']] ],
-	'agent'=>['type'=>'string',],
-	'code'=>['type'=>'string','bundlefield'=>['item','sku'], 'hierarchy'=>['default'=>['category']] ],
+	'city'=>['type'=>'string','hierarchy'=>['default' => ['country','region']], 'datatype'=>'dimension' ],
+	'agent'=>['type'=>'string', 'datatype'=>'dimension'],
+	'code'=>['type'=>'string', 'datatype'=>'dimension',
+				'bundlefield'=>['item','sku'], 
+				'hierarchy'=>[
+						'default'=>[
+							'category'=>['type'=>'string', 'datatype'=>'dimension']
+						]] ],
 	'date'=>['type'=>'date',]
 	]; 
 
 $othersfield=[
-	'sku'=>['type'=>'string','datatype'=>'others'],
-	'item'=>['type'=>'string','datatype'=>'others'],
-	'sales'=>['type'=>'string','datatype'=>'measures'],
-	'cost'=>['type'=>'string','datatype'=>'measures'],
+	'sku'=>['type'=>'string','datatype'=>'others', 'basecolumn'=>'code'],
+	'item'=>['type'=>'string','datatype'=>'others', 'basecolumn'=>'code'],
+	'sales'=>['type'=>'double','datatype'=>'measure'],
+	'cost'=>['type'=>'double','datatype'=>'measure'],
 ];	
 //'hierarchy'=>['year','month','day'] 
 
@@ -53,29 +58,23 @@ if(file_exists($olapfile))
 		$cube->addRow($i,$rs);
 		
 	}
-	$cube->optimizeMemory();
-
+	
 		$dimension='country';
 		$arrdimension=['code','city'];
 		$measures=[
 			'sales',//sum sales, default is sum, return as sales
-			['field'=>'sales','agg'=>'sum'], //sum sales, return sales_sum			
-			['field'=>'profit','callback'=>'callback1'], //custom,  'profit' not exists, it will run callback to get value
+			['field'=>'cost','agg'=>'sum'], //sum sales, return sales_sum			
+			['field'=>'profit','querystr'=>'SUM(CASE WHEN `sales` >=131  THEN 1 ELSE 0 END) '], //custom,  'profit' not exists, it will run callback to get value
 		];
+			// 'date'=>[['from'=>'2010-01-01','to'=>'2020-12-31']],
 		$filtercomponent=[
-				'date'=>[['from'=>'2010-01-01','to'=>'2020-12-31']],
+			
 		];
 		$sorts=[['code'=>'DESC'],['profit'=>'ASC']];
 		$summary=$cube->aggregateByMultiDimension($arrdimension,$measures,$filtercomponent,$sorts); //summary of country
 		writedebug($summary,'aggregate');
 
-		$summarydrilldown=$cube->drillDown($dimension,$measures,$filtercomponent,$sorts);
-		writedebug($summarydrilldown,'drilldown');
 		
-		$summaryrollup=$cube->rollUp($dimension,$measures,$filtercomponent,$sorts);
-		writedebug($summaryrollup,'rollUp');
-		
-
 
 	}
 }
@@ -84,9 +83,3 @@ else
 	echo $olapfile .' not exits!';
 }
 
-
-
-function callback1($row,$broughforward)
-{
-	return $row['sales']-$row['cost'];
-}

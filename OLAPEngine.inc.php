@@ -45,11 +45,10 @@ class OLAPEngine
        * Create Olap Cube, through Cube.inc.php. Facts is 1 flat php hash table, $dimensions is array descript the dimension & hierarchy,
        * $measures declare all measures.
        *
-       * @param array $fact
        * @param array $dimensions [['field'=>'agent','type'=>'string'],[...]]
        * @return object cube object
        */
-	public function createCube($dimensions,$rowcount)
+	public function createCube($dimensions)
 	{
 		$cube = new Cube();
 
@@ -58,12 +57,11 @@ class OLAPEngine
 			return false;
 		}
 		else
-		{			
+		{
 			$cube->setVersion($this->version);			
 			$cube->setDimensionSetting($dimensions);						
 			$dimensiondata=$this->generateDistinctDimensionSchema($cube);			
 			$cube->setDimensionList($dimensiondata);
-			$cube->defineCellSize($rowcount);
 		}		
 		return $cube;
 		
@@ -221,10 +219,24 @@ class OLAPEngine
 		$foldername=dirname($filename);
 		if(file_exists($foldername) && is_writable($foldername))
 		{
+			$storagetype=$cube->getStorageEngine();
+			if($storagetype=='sqlite')
+			{
+
+				$dbfilename=$foldername.'/cell.db';
+				if(file_exists($dbfilename))
+				{
+					unlink($dbfilename);	
+				}				
+				$cube->exportSQLiteDB($dbfilename);
+			}
+			$cube->detachPDO();
 			$cubedata=serialize($cube);					
 			$fp = fopen($filename, "w"); 
 			fwrite($fp, $cubedata); 
 			fclose($fp);
+
+			
 			return true;
 		}
 		else
@@ -237,29 +249,27 @@ class OLAPEngine
 	}
 
 
+
 	public function importCube($filename)
 	{
-		
+		$foldername=dirname($filename);
 		if(file_exists($filename) )
 		{
 			$objData = file_get_contents($filename);
 			$tmpcube = unserialize($objData);    
-			unset($objData);
+			if($tmpcube->getStorageEngine()=='sqlite')
+			{
+				$tmpcube->restoreSQLiteDB($foldername.'/cell.db');
+			}
+			unset($objData);			
 			return $tmpcube;
-				
-
 		}
 		else
 		{
 			$this->errormsg=sprintf('%s is not exists for import.',$filename);
-			return false;
-			
-		}
-		
+			return false;			
+		}		
 	}
-
-
-
 }
 
 
