@@ -1,11 +1,12 @@
 <?php
 
+use \Workerman\Lib\Timer;
 
 class Cube
 {
 	public $version;
 	private $dimensionsetting;
-	public $status;	
+	public $status;
 	private $dimensionlist;
 	private $sorts;
 	private $cells = null;
@@ -22,14 +23,26 @@ class Cube
 	private $expiedduration=60*15; //15 minute consider expired
 	public function __construct()
 	{
-
+		
 	}
 
+	/* return the property that needed to be serialized */
+	public function __sleep() {
+		return array('version','dimensionsetting','status','dimensionlist',
+		'sorts','cells','errormsg','othersField','originaldimensionsetting',
+		'aggdivider','storageengine','connectioninfo','supportedstoragengine',
+		'lastinsert','lastread','expiedduration','msg','dataset_id');
+    }
 
+	/* reconnect db while unserialize() being called */
+    // public function __wakeup() {
+    //     $this->connectDB();
+	// }
+	
 
 	/**
-     * 
-     * return error msg 
+     *
+     * return error msg
      *
      * @return string errormsg
      */
@@ -47,14 +60,14 @@ class Cube
 	{
 		$this->version=$version;
 	}
-	
+
 	/**
 	  * get version number of olapengine
 	  * @return string $version
 	  */
 	public function getVersion()
 	{
-		return $this->version;	
+		return $this->version;
 	}
 
 
@@ -88,23 +101,23 @@ class Cube
 	  * @return string storageengine
 	  */
 	public function getStorageEngine()
-	{			
+	{
 			return $this->storageengine;
-		
+
 	}
 	/**
-	  * define distinct dimension data into this cube	  
+	  * define distinct dimension data into this cube
 	  * @param array dimension data
 	  *
 	  */
 	public function setDimensionList($dimensionlist=[])
-	{						
+	{
 		$this->dimensionlist=$dimensionlist;
 	}
 
 
 	/**
-	  * get distinct dimension data from this cube	  
+	  * get distinct dimension data from this cube
 	  * @param string get distinct value from dimension name, leave empty to get all dimension
 	  * @return array dimension data
 	  */
@@ -112,25 +125,25 @@ class Cube
 	{
 		if($dimensionname=='')
 		{
-			return $this->dimensionlist;	
+			return $this->dimensionlist;
 		}
 		else
 		{
 			if(isset($this->dimensionlist[$dimensionname]))
 			{
-				return $this->dimensionlist[$dimensionname];	
+				return $this->dimensionlist[$dimensionname];
 			}
 			else
 			{
 				return false;
 			}
-			
+
 		}
-		
+
 	}
 
    /**
-  	* get all fields from cube, included dimension, measures and others field 
+  	* get all fields from cube, included dimension, measures and others field
   	* @return array $fieldlist
   	*/
   public function getAllFields()
@@ -144,28 +157,29 @@ class Cube
   			if(isset($fobj['basecolumn']) || $fobj['datatype']=='measure')
   			{
 
-  				$fields[$f]=$fobj;		
+  				$fields[$f]=$fobj;
   			}
-  			
+
   		}
-  		
-  	}  	
+
+  	}
   	return $fields;
   }
- 
+
 
 
 	/**
-	  * define dimension defination into this cube	  
+	  * define dimension defination into this cube
 	  * @param array dimension setting
 	  *
 	  */
 	public function setDimensionSetting($dimensionsetting)
-	{		
-		//keep original dimension setting 
-		$this->originaldimensionsetting=$dimensionsetting;		
+	{
+
+		//keep original dimension setting
+		$this->originaldimensionsetting=$dimensionsetting;
 		//flatten hierarchy dimension setting, mean parent/child all consider as individual dimension
-		$this->dimensionsetting=[];	
+		$this->dimensionsetting=[];
 		foreach($dimensionsetting as $d => $dobj)
 		{
 
@@ -174,11 +188,11 @@ class Cube
 			//"Document Date":{"type":"date","datatype":"dimension","datehierarchy":["period","quarter","year"]},
 			/*
 
-	"Item Code":{"type":"string","datatype":"dimension", 
+	"Item Code":{"type":"string","datatype":"dimension",
                     "bundlefield": ["Item Name"],
                      "hierarchy": {
                               "default": {
-                                           "Category Code":{"type":"string","datatype":"dimension", "bundlefield": ["Category Name"]}                                                  
+                                           "Category Code":{"type":"string","datatype":"dimension", "bundlefield": ["Category Name"]}
                                          }
                         }
 		},
@@ -213,19 +227,20 @@ class Cube
 								$this->dimensionsetting[$hi]['basecolumn']=$d;
 								$this->dimensionsetting[$hi]['datatype']='dimension';
 							}
-							
+
 						}
 						else if(gettype($ho)=='object')
 						{
 							if(!isset($this->dimensionsetting[$hi]))
 							{
 								$this->dimensionsetting[$hi]=(array)$ho;
+								
 								$this->dimensionsetting[$hi]['basecolumn']=$d;
 								$this->dimensionsetting[$hi]['datatype']='dimension';
 							}
 						}
 						else
-						{	
+						{
 
 							if(isset($this->dimensionsetting[$ho]))
 							{
@@ -233,29 +248,30 @@ class Cube
 							else
 							{
 								$this->dimensionsetting[$hi]=['type'=>$type,'basecolumn'=>$d,'field'=>$ho,'datatype'=>'dimension'];
-							}							
-						}						
+							}
+						}
 					}
 				}
 			}
-		}		
+		}
 	}
 
 
 	/**
 	 * define others field beside dimension, include measures, bundle fields, hierarchy fields
 	 * the info define here can be use for capture drill down info and etc.
-	 *	 
+	 *
 	 */
 	public function setOthersField($othersfield=[])
 	{
+		// exec("echo ".json_encode($othersfield)." >> /var/www/html/testlog.txt");
 
 		foreach($this->dimensionsetting as $d => $dobj)
-		{							
+		{
 
 			//idenfied is part of bundle field?
 			if(isset($dobj['bundlefield']) && count($dobj['bundlefield'])>0)
-			{				
+			{
 				foreach($dobj['bundlefield'] as $bi => $fieldname)
 				{
 					if(!isset($othersField[$fieldname]))
@@ -265,9 +281,9 @@ class Cube
 					else
 					{
 						$othersfield[$fieldname]['basecolumn']=$d;
-					}	
+					}
 				}
-			}							
+			}
 		}
 
 
@@ -277,7 +293,7 @@ class Cube
 
 
     /**
-	  * get distinct dimension setting from this cube	  
+	  * get distinct dimension setting from this cube
 	  * @param string dimensionname, get setting from the dimension name, leave empty to get all dimension
 	  * @return array dimension setting
 	  */
@@ -290,7 +306,7 @@ class Cube
 
 
 	/**
-	  * get distinct dimension setting from this cube	  
+	  * get distinct dimension setting from this cube
 	  * @param string dimensionname, get setting from the dimension name, leave empty to get all dimension
 	  * @return array dimension setting
 	  */
@@ -299,7 +315,7 @@ class Cube
 	{
 		if($dimensionname=='')
 		{
-			return $this->dimensionsetting;	
+			return $this->dimensionsetting;
 		}
 		else
 		{
@@ -309,19 +325,19 @@ class Cube
 			}
 			else
 			{
-				return false;		
+				return false;
 			}
-			
+
 		}
 	}
 
 
 	public function generateCreateTableSQLite()
 	{
-		$sql="CREATE TABLE IF NOT EXISTS celltable ( fact_id INTEGER PRIMARY KEY";
+		$sql="CREATE TABLE IF NOT EXISTS celltable ( fact_id INTEGER PRIMARY KEY  ";
 		 //dimension all will convert become integer
 		 foreach($this->dimensionsetting as $field => $fieldsetting)
-		 {					
+		 {
 		 	$fieldtype=$this->getFieldType($field);
 		 	if($fieldtype=='date')
 		 	{
@@ -331,8 +347,8 @@ class Cube
 		 	{
 		 		$sql.=",`$field` INTEGER ";
 		 	}
-			 
-			 
+
+
 		 }
 
 		 //others field will remain as it is
@@ -358,9 +374,9 @@ class Cube
 					 $dbfieldtype='TEXT';
 				 break;
 			 }
-			 $sql.=",`$field` $dbfieldtype ";					
+			 $sql.=",`$field` $dbfieldtype ";
 		 }
-		 $sql.=');';	
+		 $sql.=');';
 
 		 return $sql;
 	}
@@ -378,7 +394,7 @@ class Cube
 				$this->msg="array is not database";
 				return false;
 			break;
-			case 'sqlite':		
+			case 'sqlite':
 
 			if(!$this->db )
 			{
@@ -394,17 +410,17 @@ class Cube
 					}
 
 					 if(!$tableexists)
-					 {					 
+					 {
 
-						 $sql=$this->generateCreateTableSQLite();									
-						 $this->db->exec($sql); 										
+						 $sql=$this->generateCreateTableSQLite();
+						 $this->db->exec($sql);
 						 foreach($this->dimensionsetting as $field => $fieldsetting)
-						 {					
+						 {
 							 $sqlindex="CREATE INDEX `$field` ON celltable($field)";
-							 $this->db->exec($sqlindex);										
-						 }	
-	 
-					 return true;			
+							 $this->db->exec($sqlindex);
+						 }
+
+					 return true;
 				   }
 				 }
 				  catch(PDOException $e) {
@@ -426,7 +442,7 @@ class Cube
 		if($filename=='')
 		{
 			$this->msg="exportSQLDB required to define destinate database filename";
-			return false;		 
+			return false;
 		}
 		//prepare physical database file
 		$backupdb = new PDO('sqlite:'.$filename);
@@ -446,7 +462,7 @@ class Cube
 		if($filename=='')
 		{
 			$this->msg="restoreSQLiteDB required to define destinate database filename";
-			return false;		 
+			return false;
 		}
 
 		if(!file_exists($filename))
@@ -463,7 +479,7 @@ class Cube
 		$this->db->exec("DETACH backupdb");
 
 		$sql="SELECT COUNT(*) as rowcount FROM celltable";
-		
+
 		foreach($this->db->query($sql) as $row)
 		{
 			// echo 'imported row count:'.$row['rowcount'];
@@ -482,16 +498,16 @@ class Cube
 			 {
 			 	// echo "cannot connect db\n";
 			 }
-		}		
+		}
 		switch($this->storageengine)
 		{
 			case 'sqlite':
 				$newcellvalue=[];
 				foreach(array_values($cell) as $cellvalue)
-				{					
+				{
 					// array_push($newcellvalue, str_replace("'", "\'", $cellvalue) );
 					array_push($newcellvalue, SQLite3::escapeString($cellvalue) );
-					
+
 				}
 
 
@@ -505,38 +521,41 @@ class Cube
 
 				$this->db->exec($sql);
 				return true;
-			break;			
+			break;
 			default:
 				$this->msg='Currently using storage engine "'.$this->storageengine.'" which is not allow to add cell';
 				return false;
 			break;
-				
+
 		}
-		
+
 	}
 
 
 	public function optimizeMemory()
 	{
-		// foreach($this->originaldimensionsetting as $fieldname => $dim_obj)
-		// {
-		// 		$arrcount=count($this->dimensionlist[$fieldname]);
-		// 		$tmparr=new SplFixedArray($arrcount);
-		// 		foreach($this->dimensionlist[$fieldname] as $i => $o)
-		// 		{
-		// 			$tmparr[$i]=$o;
-		// 		}
-		// 		unset($this->dimensionlist[$fieldname]);
-		// 		$this->dimensionlist[$fieldname]=$tmparr;
-		// }
-		
+// 		foreach($this->originaldimensionsetting as $fieldname => $dim_obj)
+// 		{
+// 			$arrcount=count($this->dimensionlist[$fieldname]);
+// 			$tmparr=new SplFixedArray($arrcount);
 
+
+// // $tmparr= SplFixedArray::fromArray($this->dimensionlist[$fieldname]);
+
+// 			foreach($this->dimensionlist[$fieldname] as $i => $o)
+// 			{
+// 				$tmparr[$i]=$o;
+// 			}
+
+// 			unset($this->dimensionlist[$fieldname]);
+// 			$this->dimensionlist[$fieldname]=$tmparr;
+// 		}
 	}
 
 
 	/**
 	 * add row to cube, it will auto add cell, create suitable dimension
-	 * @param array &$row 
+	 * @param array &$row
 	 * @return book success or failed
 	 *
 	 */
@@ -544,14 +563,14 @@ class Cube
 	{
 		$this->lastinsert=time();
 		$this->lastread=$this->lastinsert;
-		$cell=['fact_id'=>$num];	
+		$cell=['fact_id'=>$num];
 		$dim_id='';
 		//only run at first row to create others field
 
 		foreach($this->dimensionsetting as $fieldname => $dim_obj)
 		{
-			
-			
+
+
 			if(strpos($fieldname, '@') !== false)
 			{
 				   $arrfieldname=explode('@', $fieldname);
@@ -587,29 +606,29 @@ class Cube
 			{
 				$dimensionvalue=$row[$fieldname];
 			}
-			
-			
+
+
 			if(!isset($this->dimensionlist[$fieldname]))
 			{
 				$this->dimensionlist[$fieldname]=[];
 			}
-			
+
 			$dimid_res=$this->getDimensionID($dimensionvalue,$this->dimensionlist[$fieldname]);
 			$dim_id=$dimid_res['dim_id'];
 			if($dim_id==-1)
-			{	
+			{
 				//get new dimension key, date will use date as dim_id, others string will use integer
 				$fieldtype=$this->getFieldType($fieldname);
 				if($fieldtype!='' && $fieldtype!='date')
 				{
-					$dim_id=$dimid_res['max_no']+1; //count($this->dimensionlist[$fieldname]);					
+					$dim_id=$dimid_res['max_no']+1; //count($this->dimensionlist[$fieldname]);
 				}
 				else
 				{
 					$dim_id=$dimensionvalue;
 				}
 
-				
+
 				$obj=['dim_id'=>$dim_id, 'dim_value'=>$dimensionvalue];
 
 				if(isset($dim_obj['bundlefield']))
@@ -617,9 +636,9 @@ class Cube
 					foreach($dim_obj['bundlefield'] as $bundlenum => $bundlefieldname)
 					{
 						$obj[$bundlefieldname] = $row[$bundlefieldname];
-					}	
+					}
 				}
-				
+
 
 
 				if($fieldtype!='' && $fieldtype!='date')
@@ -630,14 +649,14 @@ class Cube
 				{
 					// $obj['year']=$this->getYearFromDate($dimensionvalue);
 					// $obj['period']=$this->getPeriodFromDate($dimensionvalue);
-					// $obj['month']=$this->getMonthFromDate($dimensionvalue);					
+					// $obj['month']=$this->getMonthFromDate($dimensionvalue);
 					// $obj['quarter']=$this->getQuarterFromDate($dimensionvalue);
 					// $obj['week']=$this->getWeekFromDate($dimensionvalue);
 					// $obj['day']=$this->getWeekDayFromDate($dimensionvalue);
 
 					$this->dimensionlist[$fieldname][$dimensionvalue]=$obj;
 				}
-				
+
 			}
 			$cell[$fieldname]=$dim_id;
 		}
@@ -646,7 +665,7 @@ class Cube
 		{
 			if(isset($this->othersField[$fieldname]['basecolumn']))
 			{
-				continue;	
+				continue;
 			}
 
 
@@ -661,8 +680,8 @@ class Cube
 			}
 
 			//got define base column mean bundle field, then no need to put the data into cell
-			
-			
+
+
 			$cell[$fieldname]=$row[$fieldname];
 		}
 
@@ -670,16 +689,16 @@ class Cube
 
 	}
 
-	public function getMonthFromDate($date) 
+	public function getMonthFromDate($date)
 	{
 	 return  date('m', strtotime($date));
 	}
-	public function getPeriodFromDate($date) 
+	public function getPeriodFromDate($date)
 	{
 	 return  date('Y-m', strtotime($date));
 	}
-	
-	public function getYearFromDate($date) 
+
+	public function getYearFromDate($date)
 	{
 	  return date('Y', strtotime($date));
 	}
@@ -689,12 +708,12 @@ class Cube
 	  	return  $this->getYearFromDate($date).'-Q'.(floor(($monthnumber - 1) / 3) + 1 );
 	}
 
-	public function getWeekFromDate($date) 
+	public function getWeekFromDate($date)
 	{
-		return (int)date('W', strtotime($date));	  	
+		return (int)date('W', strtotime($date));
 	}
-	public function getWeekDayFromDate($date) 
-	{	    
+	public function getWeekDayFromDate($date)
+	{
 
 		return strtoupper(substr(date('l', strtotime($date)),0,3));
 	}
@@ -708,7 +727,7 @@ class Cube
 			//detech see whether use bundle field or dim_value
 			if($a==0)
 			{
-								
+
 				foreach($o as $bundlefieldname => $bundlevalue)
 				{
 					if($columnname==$bundlefieldname)
@@ -718,7 +737,7 @@ class Cube
 						break;
 					}
 				}
-				
+
 
 				if(!$usercolumnname)
 				{
@@ -770,7 +789,7 @@ class Cube
 	private function generateWhereString($filters=[])
 	{
 
-		$rangefilter=[]; 
+		$rangefilter=[];
 		$filterstrarr=[];
 		$newfilters=[];
 			foreach($filters as $field => $filterarr)
@@ -778,7 +797,7 @@ class Cube
 				//loop filter to take out range filter (if exists)
 				foreach($filterarr as $filternum => $filtervalue)
 				{
-					
+
 					//if value is array, mean it is something like ['from'=>'1','to'=>2]
 					if(is_array($filtervalue))
 					{
@@ -799,7 +818,7 @@ class Cube
 					{
 						//if it is dimension, use dimension list directly to filter (except date cause date will use native data)
 						$dimensionlist=$this->getDimensionList($field);
-						
+
 						if($dimensionlist && $this->getFieldType($field)!='date')
 						{
 							$dimensionrecord=$this->getDimensionID($filtervalue,$dimensionlist);
@@ -808,15 +827,15 @@ class Cube
 						//if it is not dimension, but it is bundle field of dimension, then filter with bundle value
 						else if( isset($this->othersField[$field]) && isset($this->othersField[$field]['basecolumn']))
 						{
-							
+
 							$basecolumn=$this->othersField[$field]['basecolumn'];
-							
+
 							$dimensionlist=$this->getDimensionList($basecolumn);
-							
-							
+
+
 							$dimensionrecord=$this->getDimensionIDFromBundle($field,$filtervalue,$dimensionlist);
 
-							
+
 							$field=$basecolumn;
 							if($dimensionrecord['dim_id']>-1)
 							{
@@ -834,40 +853,40 @@ class Cube
 									$newfilters[$field]=[];
 								}
 							$newfilters[$field][$filternum]=$filtervalue;
-						}		
-					}					
+						}
+					}
 				}
 				if(isset($newfilters[$field]) && count($newfilters[$field])>0)
 				{
-					$filterstrarr[$field] = '"'.implode('","', $newfilters[$field]).'"';	
-				}			
+					$filterstrarr[$field] = '"'.implode('","', $newfilters[$field]).'"';
+				}
 			}
 
-			
+
 
 			$wherestr='';
 			foreach($filterstrarr as $field => $filter)
 			{
 				if($wherestr=='')
 				{
-					$wherestr=sprintf('`%s` IN (%s)',$field,$filter);	
+					$wherestr=sprintf('`%s` IN (%s)',$field,$filter);
 				}
 				else
 				{
-					$wherestr .= ' AND '. sprintf('`%s` IN (%s)',$field,$filter);		
+					$wherestr .= ' AND '. sprintf('`%s` IN (%s)',$field,$filter);
 				}
-				
+
 			}
 
 			foreach($rangefilter as $field =>$range)
 			{
 				if($wherestr=='')
 				{
-					$wherestr = sprintf('`%s` BETWEEN "%s" AND "%s" ',$field,$range['from'],$range['to']);		
+					$wherestr = sprintf('`%s` BETWEEN "%s" AND "%s" ',$field,$range['from'],$range['to']);
 				}
 				else
 				{
-					$wherestr .= ' AND '. sprintf('`%s` BETWEEN "%s" AND "%s" ',$field,$range['from'],$range['to']);		
+					$wherestr .= ' AND '. sprintf('`%s` BETWEEN "%s" AND "%s" ',$field,$range['from'],$range['to']);
 				}
 			}
 
@@ -882,7 +901,7 @@ class Cube
 	{
 		if(isset($this->othersField[$col]['basecolumn']))
 		{
-			return $this->othersField[$col]['basecolumn'];	
+			return $this->othersField[$col]['basecolumn'];
 		}
 		else if(isset($this->dimensionlist[$col]['basecolumn']))
 		{
@@ -898,10 +917,10 @@ class Cube
 	{
 		$columns=[];
 		foreach($groupbycolumns as $i => $col)
-		{			
+		{
 			//dimension is defined
 			if(isset($this->dimensionlist[$col]))
-			{				
+			{
 				array_push($columns,$col);
 			}
 			else if($this->getBaseColumn($col)) //not dimension, but inside othersField
@@ -922,12 +941,12 @@ class Cube
 
 	private function convertQueryAsSQL($groupbycolumns,$measures,$filters=[])
 	{
-		
+
 		$fieldstr='';
 		$groupbystr='';
 		$dimensionstr='';
 		$wherestr='';
-		
+
 		$arrdimension=$this->convertToDimension($groupbycolumns);
 		//remove empty dimension if found
 		foreach($arrdimension as $i => $d)
@@ -940,7 +959,7 @@ class Cube
 
 		//prepare group by string
 		if(count($arrdimension)>0)
-		{			
+		{
 			$groupbystr=' GROUP  BY `'.implode('`,`', $arrdimension).'`';
 			$dimensionstr='`'.implode('`,`', $arrdimension).'`';
 		}
@@ -954,7 +973,7 @@ class Cube
 		$measurestr='';
 		if(count($measures)>0)
 		{
-		
+
 			foreach($measures as $i => $measure)
 			{
 				//not array, mean no define agg, make default as sum
@@ -962,7 +981,7 @@ class Cube
 				{
 					$measure= ['field'=>$measure, 'agg'=>'sum'];
 				}
-				
+
 
 				if(isset($measure['field']) && ( isset($measure['agg'])  || isset($measure['querystr'])) )
 				{
@@ -972,11 +991,11 @@ class Cube
 					}
 					if(!in_array($measure['agg'],['sum','max','min','avg','count']))
 					{
-						
-						//use custom aggregate 
+
+						//use custom aggregate
 						if($measure['agg']=='')
 						{
-							if(!isset($measure['querystr']) || $measure['querystr']=='') 
+							if(!isset($measure['querystr']) || $measure['querystr']=='')
 							{
 								$this->msg = 'Parameter querystr is not defined for "'.$measure['field'].'", you required that if you not define "agg" parameter.';
 								return false;
@@ -987,7 +1006,7 @@ class Cube
 								if($measurestr=='')
 								{
 									$measurestr = '('. $swapquerystr .') AS `' . $measure['field'].'`';
-								}	
+								}
 								else
 								{
 									$measurestr.= ','.'('. $swapquerystr  .') AS `' . $measure['field'].'`';
@@ -999,32 +1018,32 @@ class Cube
 							$this->msg = 'Aggregate "'.$measure['agg'].'" is not supported, standard aggregate only sum/max/min/avg/count is supported.';
 							return false;
 						}
-						
 
-						
+
+
 					}
 					else
 					{
 						if($measurestr=='')
 						{
 							$measurestr =  $measure['agg'].'(`'.$measure['field'] .'`) AS `' . $measure['field'].$this->aggdivider.$measure['agg'].'`';
-						}	
+						}
 						else
 						{
 							$measurestr.= ','.$measure['agg'].'(`'.$measure['field'] .'`) AS `' . $measure['field'].$this->aggdivider.$measure['agg'].'`';
 						}
-					}					
+					}
 				}
 			}
 		}
-		
+
 
 		//generate all fields
 		if($dimensionstr!='')
 		{
 			$fieldstr=$dimensionstr;
 		}
-		
+
 		if($fieldstr =='' && $measurestr!='')
 		{
 			$fieldstr=$measurestr;
@@ -1033,10 +1052,10 @@ class Cube
 		{
 			$fieldstr.=','.$measurestr;
 		}
-		
+
 		$wherestr = $this->generateWhereString($filters);
 
-		$sortstr='';		
+		$sortstr='';
 		//temporary not using having
 		$havingstr='';
 
@@ -1053,8 +1072,8 @@ class Cube
 		//find out all dimension, and get all dimension and bundle value
 		$dimensionvalue=[];
 		foreach($row as $field => $value)
-		{		
-			//field is dimension	
+		{
+			//field is dimension
 			if(isset($this->dimensionlist[$field]))
 			{
 
@@ -1066,7 +1085,7 @@ class Cube
 					{
 						$dimensionvalue[$col]=$colvalue;
 					}
-				} 
+				}
 
 				//if the dimension is not desire column, remove it
 				if(!in_array($field,$arrdimension))
@@ -1077,7 +1096,7 @@ class Cube
 				{
 					$row[$field]=$this->dimensionlist[$field][$value]['dim_value'];
 				}
-			}			
+			}
 		}
 
 		//append required dimension value (normally bundle item) into row
@@ -1094,11 +1113,11 @@ class Cube
 					$dimensionvalue[$col];
 			}
 		}
-		
+
 			return $row;
 	}
 
-	
+
 	public function isExpired()
 	{
 		$now=time();
@@ -1109,7 +1128,7 @@ class Cube
 		}
 		else
 		{
-			return false;		
+			return false;
 		}
 	}
 	public function getLastRead()
@@ -1121,45 +1140,48 @@ class Cube
 	{
 		$this->lastread=time();
 		$sql = $this->convertQueryAsSQL($arrdimension,$measures,$filters);
+
 		$res=[];
+
 		$q=$this->db->query($sql,PDO::FETCH_ASSOC);
-		// print_r($q);	
+		
 		foreach ($q as $rownum=> $row )
-		{		
+		{
 
 			$tmp=$this->getBundleValueFromDimensionId($arrdimension,$row);
 
 			array_push($res,$tmp);
 		}
-		
+
 
 		$this->sorts=$sorts;
 
 		if(count($sorts)>0)
 		{
-			
-			usort($res,array($this,'compareObjectValue'));	
+
+			usort($res,array($this,'compareObjectValue'));
 		}
+
 		return $res;
 	}
 
 
 
 	/**
-       * 
+       *
        * this function will return facts filter by dimension, it use for slice and dice a cube
        *
        * @param array $cubecomponent ['date'=>['2018-01-01',..], 'city'=>['KL',..],.. ]
-       * @return array cells 
+       * @return array cells
        */
 	public function getSubFacts($cubecomponent=[])
-	{			
+	{
 		$wherestr = $this->generateWhereString($cubecomponent);
 		$sql= sprintf("SELECT * FROM celltable %s", $wherestr);
 		$q=$this->db->query($sql,PDO::FETCH_ASSOC);
 		$res=[];
 		foreach ($q as $rownum=> $row )
-		{			
+		{
 			$tmp=[];
 			foreach($row as $col =>$value )
 			{
@@ -1173,7 +1195,7 @@ class Cube
 					$tmp[$col]=$value;
 				}
 			}
-			
+
 			array_push($res,$tmp);
 		}
 		return $res;
@@ -1191,26 +1213,26 @@ class Cube
 		//in others field? If yes get the base dimension and get the hierarchy
 		if(isset($this->dimensionsetting[$column]) && isset($this->dimensionsetting[$column]['basecolumn']))
 		{
-			$basedimension=$this->dimensionsetting[$column]['basecolumn'];			
+			$basedimension=$this->dimensionsetting[$column]['basecolumn'];
 		} //it is basedimension
 		else if(isset($this->dimensionsetting[$column]) && count($this->dimensionsetting[$column]['hierarchy'])>0)
-		{			
-				$basedimension=$column;				
+		{
+				$basedimension=$column;
 		}
 		else //supplied $column not belong to any hierarchy, it dont have next level and no support drill up/down
-		{			
+		{
 			$this->errormsg=sprintf("%s not found in any dimension and hierarchy. ",$column);
 			return false;
 		}
 
 		return $basedimension;
 	}
-	
+
 
 
 	/**
 	 * this function convert dimension dim_id become value
-	 * @param string $dimensionname 
+	 * @param string $dimensionname
 	 * @param mix $dimensionvalue
 	 * @param mix value of that id
 	*/
@@ -1225,17 +1247,17 @@ class Cube
 		}
 		else
 		{
-			$val=$dimarr[$dim_id]['dim_value'];	
+			$val=$dimarr[$dim_id]['dim_value'];
 			return $val;
 		}
-		
+
 	}
 
 
 
-	
+
 	 /**
-       * 
+       *
        * this function will summarise single dimension data according measures
        * @param $dimensionname dimension or hierarchy fieldname
        * @param array $measures ['sales', ['field'=>'cost','agg'=>'sum'], ['field'=>'profit','callback'=>'callprofit']]
@@ -1255,7 +1277,7 @@ class Cube
 		$res =$this->aggregateByMultiDimension($arrdimension,$measures,$filters,$sorts);
 
 		// writedebug($res,'res');
-		return $res;			
+		return $res;
 	}
 
 
@@ -1268,7 +1290,7 @@ class Cube
 	 */
 
 	public function drillDown($dimensionname,$measures,$filters,$sorts=[],$level=1)
-	{		
+	{
 		$nextdimensionname=$this->getNextLevelName($dimensionname,'drilldown','',$level);
 		return $this->aggregate($nextdimensionname,$measures,$filters);
 	}
@@ -1276,7 +1298,7 @@ class Cube
 
 
 	 /**
-        * 
+        *
         * this is function will roll up 1 or more level,  perform aggregate on $measures, group by next level of hierarchy field.
         * @param string from dimensionname or hierarchy field, roll up from this field
         * @param array $measures ['sales', ['field'=>'cost','agg'=>'sum'], ['field'=>'profit','callback'=>'callprofit']]
@@ -1284,10 +1306,10 @@ class Cube
         */
 	public function rollUp($dimensionname,$measures,$filters,$sorts=[],$level=1)
 	{
-		
-		$nextdimensionname=$this->getNextLevelName($dimensionname,'rollup','',$level);		
+
+		$nextdimensionname=$this->getNextLevelName($dimensionname,'rollup','',$level);
 		return $this->aggregate($nextdimensionname,$measures,$filters);
-	} 
+	}
 
 /**
 	  * this function use to identify drill up/drill down to which field name
@@ -1298,8 +1320,8 @@ class Cube
 	  */
 	public function getNextLevelName($column,$type='',$hierarchyname='',$level=1)
 	{
-		
-		$basedimension=$this->getBaseField($column);		
+
+		$basedimension=$this->getBaseField($column);
 		$hierarchy=[];
 		//get suitable hierarchy
 		if($hierarchyname!='')
@@ -1310,7 +1332,7 @@ class Cube
 		{
 
 			foreach($this->dimensionsetting[$basedimension]['hierarchy'] as $h =>$hierarchy)
-			{			
+			{
 				break;
 			}
 		}
@@ -1322,15 +1344,15 @@ class Cube
 
 		if($type=='drilldown')
 		{
-			//if it is at lowest hierarchy, and it is drill down, then return same column	
+			//if it is at lowest hierarchy, and it is drill down, then return same column
 			if($column==$basedimension)
 			{
 				return $column;
-			}			
+			}
 			//return base level when it found in first level
 			else if($position==0)
 			{
-				return $basedimension;				
+				return $basedimension;
 			}
 			else
 			{
@@ -1355,13 +1377,13 @@ class Cube
 				return $hierarchy[$newlevel];
 			}
 			else
-			{				
+			{
 				$newlevel=$position+$level;
 				return $hierarchy[$newlevel];
-				
+
 			}
 		}
-			
+
 	}
 
 	/**
@@ -1374,40 +1396,40 @@ class Cube
 		$fieldtype='';
 		if(isset($this->dimensionsetting[$fieldname]) )
 		{
-			$fieldtype=$this->dimensionsetting[$fieldname]['type'];	
+			$fieldtype=$this->dimensionsetting[$fieldname]['type'];
 		}
 		else if(isset($this->dimensionsetting[$fieldname]) )
 		{
-			$fieldtype=$this->othersField[$fieldname]['type'];		
-		}		
+			$fieldtype=$this->othersField[$fieldname]['type'];
+		}
 		return $fieldtype;
 
 	}
      /**
-       * 
+       *
        * this is private function use to evaluate user's filter
        *
        * @param string $dimensionname, a column name
        * @param mixed $value use to compare the dimension
-       * @param array of filters with different condition      
+       * @param array of filters with different condition
        * @return bool
        */
 	private function evaluateFilter($dimensionname,$value,$filters)
 	{
 		if(isset($this->dimensionsetting[$dimensionname]['type']))
 		{
-			$fieldtype=$this->dimensionsetting[$dimensionname]['type'];	
+			$fieldtype=$this->dimensionsetting[$dimensionname]['type'];
 		}
 		else
 		{
-			$fieldtype=$this->othersField[$dimensionname]['type'];		
+			$fieldtype=$this->othersField[$dimensionname]['type'];
 		}
-		
+
 		foreach($filters as $i => $f)
-		{			
+		{
 			//select all, or match
 			if($f=='*' || $f==$value)
-			{				
+			{
 				return true;
 			}
 			//range filter
@@ -1423,7 +1445,7 @@ class Cube
 					}
 					if(strlen($f['to'])==4)
 					{
-						$f['to'].='-12-31';	
+						$f['to'].='-12-31';
 					}
 
 					if(strlen($f['from'])==7)
@@ -1432,13 +1454,13 @@ class Cube
 					}
 					if(strlen($f['to'])==7)
 					{
-						$f['to'].='-31';	
+						$f['to'].='-31';
 					}
 
 					if($value>=$f['from'] && $value <= $f['to'])
 					{
 						return true;
-					}		
+					}
 				}
 				else
 				{
@@ -1454,7 +1476,7 @@ class Cube
 		return false;
 	}
 
-	
+
 	public function drawCube()
 	{
 		writedebug($this);
@@ -1496,10 +1518,10 @@ class Cube
 
 				$fieldname=str_replace(':', '__', $field);
 
-				if(strpos($field, ':') !== false) 
+				if(strpos($field, ':') !== false)
 				{
-					
-					
+
+
 						if($a[$fieldname] == $b[$fieldname])
 						{
 							$r=0;
@@ -1514,13 +1536,13 @@ class Cube
 							{
 								$r =$a[$fieldname] - $b[$fieldname];;
 							}
-							
+
 						}
 
 				}
 				else
 				{
-					
+
 					if(strtolower($sortmethod)=='desc')
 					{
 						$r= -1 * strcmp( $a[$fieldname] , $b[$fieldname]);
@@ -1531,22 +1553,22 @@ class Cube
 					}
 
 				}
-				
+
 
 				if($r !=0 || $r!='0')
 				{
 					return $r;
 				}
 			}
-		}		
-		return 0;	    
+		}
+		return 0;
 	}
 
 
 	private function replaceDimensionValueFromString($longstring)
 	{
 
-			
+
 
 			$matches = array();
 			preg_match_all('/\{([^}]+)\}/', $longstring, $matches);
@@ -1559,11 +1581,11 @@ class Cube
 				$dimensionname=$dv[0];
 				$dimensionvalue=$dv[1];
 
-				
+
 				$dim_id=$this->getDimensionID($dimensionvalue,$this->dimensionlist[$dimensionname])['dim_id'];
 				if($dim_id>-1)
 				{
-					$str=str_replace($matches[0][$num], $dim_id, $str);	
+					$str=str_replace($matches[0][$num], $dim_id, $str);
 				}
 				else //try explore is it a bundle field
 				{
@@ -1577,23 +1599,23 @@ class Cube
 						$dim_id=$this->getDimensionIDFromBundle($bundlefieldname,$filtervalue,$this->dimensionlist[$dimensionname])['dim_id'];
 						if($dim_id>-1)
 						{
-							$str=str_replace($matches[0][$num], $dim_id, $str);	
+							$str=str_replace($matches[0][$num], $dim_id, $str);
 						}
-						
+
 					}
 					else //it is not dimension and bundle field, direct replace regular expression become value
 					{
-						$str=str_replace($matches[0][$num], $dimensionvalue, $str);	
+						$str=str_replace($matches[0][$num], $dimensionvalue, $str);
 					}
 				}
-				
+
 
 				//
 			}
 
 
 
-			
+
 			return $str;
 
 	}
